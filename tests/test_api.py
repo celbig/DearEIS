@@ -30,6 +30,7 @@ from typing import (
     Type,
 )
 from unittest import TestCase
+from uuid import uuid4
 from pandas import DataFrame
 from numpy import (
     allclose,
@@ -39,6 +40,7 @@ from numpy import (
     ndarray,
 )
 import matplotlib
+import matplotlib.pyplot
 import pyimpspec
 import deareis
 from deareis.config import Config
@@ -695,6 +697,94 @@ class TestMPL(TestCase):
         project: deareis.Project = deareis.Project.from_file(TEST_PROJECT_PATH)
         plots: List[deareis.PlotSettings] = project.get_plots()
         fig, axis = deareis.mpl.plot(plots[0], project)
+
+
+class TestMPLSubcircuits(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.data: deareis.DataSet = deareis.parse_data(TEST_DATA_PATH)[0]
+        cls.result: deareis.FitResult = deareis.fit_circuit(
+            cls.data,
+            deareis.FitSettings(
+                cdc="R{R=90}(R{R=230}C{C=7.8E-7})(R{R=570}W{Y=4.25E-4})",
+                method=deareis.CNLSMethod.LEAST_SQUARES,
+                weight=deareis.Weight.PROPORTIONAL,
+                max_nfev=200,
+                timeout=60,
+            ),
+        )
+        cls.project: deareis.Project = deareis.Project()
+        cls.project.add_data_set(cls.data)
+        cls.project.add_fit(cls.data, cls.result)
+
+    def create_settings(self, plot_type: deareis.PlotType) -> deareis.PlotSettings:
+        settings: deareis.PlotSettings = deareis.PlotSettings(
+            "Plot",
+            plot_type,
+            [],
+            {},
+            {},
+            {},
+            {},
+            {},
+            uuid4().hex,
+        )
+        settings.add_series(self.result)
+        return settings
+
+    def get_labels(self, axes) -> List[str]:
+        return [_.get_label() for _ in list(axes[0].lines) + list(axes[0].collections)]
+
+    def tearDown(self):
+        matplotlib.pyplot.close("all")
+
+    def test_default(self):
+        settings = self.create_settings(deareis.PlotType.NYQUIST_IMPEDANCE)
+        _, axes = deareis.mpl.plot(settings, self.project)
+        labels: List[str] = self.get_labels(axes)
+        for label in ("R_1", "(R_2C_1)", "(R_3W_1)"):
+            self.assertNotIn(label, labels)
+
+    def test_subcircuits(self):
+        settings = self.create_settings(deareis.PlotType.NYQUIST_IMPEDANCE)
+        _, axes = deareis.mpl.plot(settings, self.project, subcircuits=True)
+        labels: List[str] = self.get_labels(axes)
+        for label in ("R_1", "(R_2C_1)", "(R_3W_1)"):
+            self.assertIn(label, labels)
+
+    def test_series_resistance_offset(self):
+        settings = self.create_settings(deareis.PlotType.NYQUIST_IMPEDANCE)
+        _, axes = deareis.mpl.plot(
+            settings,
+            self.project,
+            subcircuits=True,
+            subcircuit_offset="series_resistance",
+        )
+        labels: List[str] = self.get_labels(axes)
+        self.assertNotIn("R_1", labels)
+        self.assertIn("(R_2C_1)", labels)
+        self.assertIn("(R_3W_1)", labels)
+
+    def test_other_plot_types(self):
+        for plot_type in (
+            deareis.PlotType.NYQUIST_ADMITTANCE,
+            deareis.PlotType.BODE_IMPEDANCE_MAGNITUDE,
+        ):
+            settings = self.create_settings(plot_type)
+            _, axes = deareis.mpl.plot(settings, self.project, subcircuits=True)
+            self.assertNotIn("(R_2C_1)", self.get_labels(axes))
+
+    def test_invalid_arguments(self):
+        settings = self.create_settings(deareis.PlotType.NYQUIST_IMPEDANCE)
+        with self.assertRaises(AssertionError):
+            deareis.mpl.plot(settings, self.project, subcircuits=True, subcircuit_offset="invalid")
+
+    def test_plot_subcircuits(self):
+        figure, axes = deareis.mpl.plot_subcircuits(self.result)
+        self.assertEqual(len(axes[0].lines) + len(axes[0].collections), 3)
+
+    def test_plot_fit(self):
+        deareis.mpl.plot_fit(self.result, self.data, subcircuits=True)
 
 
 # TODO: Update tests

@@ -100,6 +100,10 @@ from deareis.gui.widgets.combo import Combo
 from deareis.typing.helpers import Tag
 
 
+SUBCIRCUIT_OFFSETS: Dict[str, str] = {
+    "No offset": "none",
+    "Series R offset": "series_resistance",
+}
 MATH_WEIGHT_WIDTH: int = 300
 MATH_WEIGHT_HEIGHT: int = 40
 MATH_WEIGHT_MODULUS: int = -1
@@ -1213,6 +1217,29 @@ class FittingTab:
                 )
                 attach_tooltip(tooltips.general.plot_admittance)
 
+                self.nyquist_subcircuits_checkbox: Tag = dpg.generate_uuid()
+                dpg.add_checkbox(
+                    label="Subcircuits",
+                    default_value=self.state.config.fit_subcircuits,
+                    callback=lambda s, a, u: self.toggle_subcircuits(a),
+                    tag=self.nyquist_subcircuits_checkbox,
+                )
+                attach_tooltip(tooltips.fitting.subcircuits)
+
+                self.nyquist_subcircuit_offset_combo: Tag = dpg.generate_uuid()
+                dpg.add_combo(
+                    items=list(SUBCIRCUIT_OFFSETS.keys()),
+                    default_value=next(
+                        label
+                        for label, offset in SUBCIRCUIT_OFFSETS.items()
+                        if offset == self.state.config.fit_subcircuit_offset
+                    ),
+                    callback=lambda s, a, u: self.select_subcircuit_offset(a),
+                    width=140,
+                    tag=self.nyquist_subcircuit_offset_combo,
+                )
+                attach_tooltip(tooltips.fitting.subcircuit_offset)
+
     def create_bode_plot(self):
         with dpg.tab(label="Bode"):
             self.bode_plot: Bode = Bode(width=-1, height=-24)
@@ -1417,6 +1444,52 @@ class FittingTab:
     def set_settings(self, settings: FitSettings):
         self.settings_menu.set_settings(settings)
 
+    def toggle_subcircuits(self, show: bool):
+        self.state.config.fit_subcircuits = show
+        self.update_subcircuits()
+
+    def select_subcircuit_offset(self, label: str):
+        self.state.config.fit_subcircuit_offset = SUBCIRCUIT_OFFSETS[label]
+        self.update_subcircuits()
+
+    def update_subcircuits(self, adjust_limits: bool = True):
+        # Series 0, 1, and 2 are the data, the fit markers, and the fit line
+        while len(self.nyquist_plot.get_series()) > 3:
+            self.nyquist_plot.delete_series(3)
+
+        user_data: Optional[dict] = dpg.get_item_user_data(self.delete_button)
+        fit: Optional[FitResult] = user_data.get("fit") if user_data else None
+        if (
+            not self.state.config.fit_subcircuits
+            or fit is None
+            or not isinstance(fit.circuit, Circuit)
+        ):
+            return
+
+        components: List[Tuple[str, ndarray]] = fit.circuit.get_subcircuit_impedances(
+            fit.get_frequencies(
+                num_per_decade=self.state.config.num_per_decade_in_simulated_lines
+            ),
+            offset=self.state.config.fit_subcircuit_offset,
+        )
+        themes_: List[int] = themes.nyquist.subcircuits
+        i: int
+        label: str
+        Z: ndarray
+        for i, (label, Z) in enumerate(components):
+            # A component that does not depend on the frequency (e.g., a resistor) is a single point
+            is_point: bool = bool(allclose(Z, Z[0]))
+            self.nyquist_plot.plot(
+                impedances=Z[:1] if is_point else Z,
+                label=label,
+                line=not is_point,
+                subcircuit=True,
+                theme=themes_[i % len(themes_)],
+            )
+
+        if adjust_limits and dpg.get_value(self.adjust_nyquist_limits_checkbox):
+            self.nyquist_plot.queue_limits_adjustment()
+
     def toggle_plot_admittance(self, admittance: bool):
         tag: int
         for tag in (
@@ -1425,6 +1498,12 @@ class FittingTab:
             self.impedance_admittance_checkbox,
         ):
             dpg.set_value(tag, admittance)
+
+        for tag in (
+            self.nyquist_subcircuits_checkbox,
+            self.nyquist_subcircuit_offset_combo,
+        ):
+            (dpg.disable_item if admittance else dpg.enable_item)(tag)
 
         self.nyquist_plot.set_admittance(admittance)
         self.bode_plot.set_admittance(admittance)
@@ -1458,6 +1537,8 @@ class FittingTab:
         self.statistics_table.clear(hide=hide)
         self.settings_table.clear(hide=hide)
         self.circuit_preview.clear()
+        while len(self.nyquist_plot.get_series()) > 3:
+            self.nyquist_plot.delete_series(3)
         self.nyquist_plot.clear(delete=False)
         self.bode_plot.clear(delete=False)
         self.impedance_plot.clear(delete=False)
@@ -1669,6 +1750,8 @@ class FittingTab:
             real=real,
             imaginary=imag,
         )
+
+        self.update_subcircuits(adjust_limits=False)
 
         if dpg.get_value(self.adjust_nyquist_limits_checkbox):
             self.nyquist_plot.queue_limits_adjustment()

@@ -246,6 +246,8 @@ class Config:
         self.default_simulation_settings: SimulationSettings = None  # type: ignore
         self.default_plot_export_settings: PlotExportSettings = None  # type: ignore
         self.default_element_parameters: Dict[str, Dict[str, float]] = None  # type: ignore
+        self.fit_subcircuits: bool = None  # type: ignore
+        self.fit_subcircuit_offset: str = None  # type: ignore
         self.markers: Dict[str, int] = None  # type: ignore
         self.colors: Dict[str, List[float]] = None  # type: ignore
         self.keybindings: List[Keybinding] = None  # type: ignore
@@ -267,6 +269,8 @@ class Config:
             "default_plot_export_settings": DEFAULT_PLOT_EXPORT_SETTINGS.to_dict(),
             "default_simulation_settings": DEFAULT_SIMULATION_SETTINGS.to_dict(),
             "default_element_parameters": {},
+            "fit_subcircuits": False,
+            "fit_subcircuit_offset": "none",
             "colors": DEFAULT_COLORS,
             "markers": DEFAULT_MARKERS,
             "keybindings": list(map(lambda _: _.to_dict(), DEFAULT_KEYBINDINGS)),
@@ -291,6 +295,8 @@ class Config:
                     "default_simulation_settings": self.default_simulation_settings.to_dict(),
                     "default_plot_export_settings": self.default_plot_export_settings.to_dict(),
                     "default_element_parameters": self.default_element_parameters.copy(),
+                    "fit_subcircuits": self.fit_subcircuits,
+                    "fit_subcircuit_offset": self.fit_subcircuit_offset,
                     "colors": self.colors,
                     "markers": self.markers,
                     "keybindings": list(map(lambda _: _.to_dict(), self.keybindings)),
@@ -368,6 +374,13 @@ class Config:
             {},
         )
 
+        self.fit_subcircuits = settings.get("fit_subcircuits", False)
+        self.fit_subcircuit_offset = settings.get("fit_subcircuit_offset", "none")
+        if type(self.fit_subcircuits) is not bool:
+            self.fit_subcircuits = False
+        if self.fit_subcircuit_offset not in ("none", "series_resistance"):
+            self.fit_subcircuit_offset = "none"
+
         key: str
         element: Type[Element]
         for key, element in get_elements().items():
@@ -387,6 +400,11 @@ class Config:
             "mu_Xps_mu": themes.mu_Xps.mu,
             "nyquist_data": themes.nyquist.data,
             "nyquist_simulation": themes.nyquist.simulation,
+            "nyquist_subcircuit_1": themes.nyquist.subcircuits[0],
+            "nyquist_subcircuit_2": themes.nyquist.subcircuits[1],
+            "nyquist_subcircuit_3": themes.nyquist.subcircuits[2],
+            "nyquist_subcircuit_4": themes.nyquist.subcircuits[3],
+            "nyquist_subcircuit_5": themes.nyquist.subcircuits[4],
             "residuals_imaginary": themes.residuals.imaginary,
             "residuals_real": themes.residuals.real,
         }
@@ -417,6 +435,11 @@ class Config:
             "mu_Xps_mu_highlight": themes.mu_Xps.mu_highlight,
             "nyquist_data": themes.nyquist.data,
             "nyquist_simulation": themes.nyquist.simulation,
+            "nyquist_subcircuit_1": themes.nyquist.subcircuits[0],
+            "nyquist_subcircuit_2": themes.nyquist.subcircuits[1],
+            "nyquist_subcircuit_3": themes.nyquist.subcircuits[2],
+            "nyquist_subcircuit_4": themes.nyquist.subcircuits[3],
+            "nyquist_subcircuit_5": themes.nyquist.subcircuits[4],
             "residuals_imaginary": themes.residuals.imaginary,
             "residuals_real": themes.residuals.real,
         }

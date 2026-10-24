@@ -1,3 +1,14 @@
+# Unreleased
+
+- Added the `Subcircuits` checkbox and offset selection to the Nyquist plot in the `Fitting` tab, which show the contribution of each component that is connected in series in the fitted circuit (e.g., `R`, `(RC)`, and `(RW)` for `R(RC)(RW)`).
+  - The state of the checkbox and the chosen offset (`No offset` or `Series R offset`) are stored in the configuration file.
+  - The contributions are included when copying the data of the plot as CSV and are hidden when plotting admittance.
+  - The colors and markers of the contributions can be changed in the `Appearance` settings.
+- Added the `subcircuits` and `subcircuit_offset` parameters to `deareis.mpl.plot` for including the contributions in Nyquist plots of circuit fits.
+- Added the `deareis.mpl.plot_subcircuits` function and the `subcircuits` and `subcircuit_offset` parameters of `deareis.mpl.plot_fit` (both from pyimpspec), which now also work with `deareis.FitResult` instances.
+- Updated the minimum version of pyimpspec to 5.3.
+
+
 # 5.1.3 (2026/04/28)
 
 - Pinned the version of DearPyGui to 2.2 as a temporary fix due to issues only observed with version 2.3.

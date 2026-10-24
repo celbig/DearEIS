@@ -543,6 +543,11 @@ DEFAULT_MARKERS: Dict[str, int] = {
     "mu_Xps_mu": dpg.mvPlotMarker_Circle,
     "nyquist_data": dpg.mvPlotMarker_Circle,
     "nyquist_simulation": dpg.mvPlotMarker_Cross,
+    "nyquist_subcircuit_1": dpg.mvPlotMarker_Circle,
+    "nyquist_subcircuit_2": dpg.mvPlotMarker_Circle,
+    "nyquist_subcircuit_3": dpg.mvPlotMarker_Circle,
+    "nyquist_subcircuit_4": dpg.mvPlotMarker_Circle,
+    "nyquist_subcircuit_5": dpg.mvPlotMarker_Circle,
     "residuals_imaginary": dpg.mvPlotMarker_Square,
     "residuals_real": dpg.mvPlotMarker_Circle,
 }
@@ -572,6 +577,11 @@ DEFAULT_COLORS: Dict[str, List[float]] = {
         119.0,
         190.0,
     ],
+    "nyquist_subcircuit_1": [0.0, 119.0, 187.0, 190.0],
+    "nyquist_subcircuit_2": [0.0, 153.0, 136.0, 190.0],
+    "nyquist_subcircuit_3": [238.0, 119.0, 51.0, 190.0],
+    "nyquist_subcircuit_4": [204.0, 51.0, 17.0, 190.0],
+    "nyquist_subcircuit_5": [187.0, 187.0, 187.0, 190.0],
     "bode_magnitude_data": [
         51.0,
         187.0,

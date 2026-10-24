@@ -28,6 +28,7 @@ import dearpygui.dearpygui as dpg
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
+from matplotlib.colors import to_hex
 from numpy import (
     floating,
     integer,
@@ -44,6 +45,7 @@ from deareis.data import (
     SimulationResult,
     KramersKronigResult,
 )
+from deareis.config.defaults import DEFAULT_COLORS
 from deareis.enums import PlotType
 
 
@@ -79,6 +81,8 @@ def plot(
     figure: Optional[Figure] = None,
     axes: List[Axes] = None,
     num_per_decade: int = 100,
+    subcircuits: bool = False,
+    subcircuit_offset: str = "none",
 ) -> Tuple[Figure, Axes]:
     """
     Plot a complex plot containing one or more items from a project based on the provided settings.
@@ -121,6 +125,14 @@ def plot(
     num_per_decade: int, optional
         If any circuit fits, circuit simulations, or Kramers-Kronig test results are included in the plot, then this parameter can be used to change how many points are used to draw the line (i.e. how smooth or angular the line looks).
 
+    subcircuits: bool, optional
+        Whether or not to plot the contribution of each component of the top-level series connection of a fitted circuit (e.g., R, (RC), and (RW) for R(RC)(RW)).
+        Only applies to circuit fits in Nyquist plots of the impedance.
+
+    subcircuit_offset: str, optional
+        Where the contributions of the components are placed on the real axis ('none' or 'series_resistance').
+        See :func:`~pyimpspec.mpl.plot_subcircuits`.
+
     Returns
     -------
     Tuple[|Figure|, List[|Axes|]]
@@ -156,6 +168,8 @@ def plot(
     assert issubdtype(type(legend_loc), integer) or type(legend_loc) is str, legend_loc
     assert type(grid) is bool, grid
     assert type(tight_layout) is bool, tight_layout
+    assert type(subcircuits) is bool, subcircuits
+    assert subcircuit_offset in ("none", "series_resistance"), subcircuit_offset
     assert type(figure) is Figure or figure is None
     axis: Axes
     if figure is None:
@@ -228,6 +242,26 @@ def plot(
         scatter_data: List[ndarray]
         line_data: List[ndarray]
         if plot_type in (PlotType.NYQUIST_IMPEDANCE, PlotType.NYQUIST_ADMITTANCE):
+            if (
+                subcircuits
+                and plot_type == PlotType.NYQUIST_IMPEDANCE
+                and type(series) is FitResult
+            ):
+                # Drawn first so that the fit is drawn on top of the contributions
+                mpl.plot_subcircuits(
+                    series,
+                    offset=subcircuit_offset,
+                    colors=[
+                        to_hex([_ / 255.0 for _ in DEFAULT_COLORS[f"nyquist_subcircuit_{j}"]])
+                        for j in range(1, 6)
+                    ],
+                    num_per_decade=num_per_decade,
+                    legend=False,
+                    figure=figure,
+                    axes=[axis],
+                    adjust_axes=False,
+                )
+
             if has_line:
                 mpl.plot_nyquist(
                     series,

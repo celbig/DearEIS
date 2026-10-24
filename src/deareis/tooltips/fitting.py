@@ -94,6 +94,18 @@ Relative errors greater than 100 % are highlighted in red to indicate that the c
         "statistics": """
 Some values may be highlighted to indicate a possible issue. For example, if the number of function evaluations is equal to the chosen limit, then this may result in a poor fit.
     """.strip(),
+        "subcircuits": """
+Show the contribution of each component that is connected in series in the circuit (e.g., R, (RC), and (RW) for R(RC)(RW)).
+
+The impedances of components in series add up, so the contributions sum up to the impedance of the whole circuit.
+
+Not available when plotting admittance.
+    """.strip(),
+        "subcircuit_offset": """
+Choose where the contributions are placed on the real axis:
+- No offset: each contribution starts from the origin and the values are exact. Resistors in series are shown as single points.
+- Series R offset: the sum of the resistors in series (e.g., the ohmic resistance) is added to the real part of the other contributions and the resistors are not shown separately.
+    """.strip(),
         "delete": """
 Delete the current fit result.
     """.strip(),

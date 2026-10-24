@@ -476,6 +476,38 @@ This affects how smooth the lines will look when plotting the impedance response
                     tag=self.nyquist_sim_marker,
                     width=-1,
                 )
+            # Subcircuit colors and markers
+            self.nyquist_subcircuit_colors: List[Tag] = []
+            self.nyquist_subcircuit_markers: List[Tag] = []
+            i: int
+            theme: int
+            for i, theme in enumerate(themes.nyquist.subcircuits):
+                key: str = f"nyquist_subcircuit_{i + 1}"
+                color_tag: Tag = dpg.generate_uuid()
+                marker_tag: Tag = dpg.generate_uuid()
+                self.nyquist_subcircuit_colors.append(color_tag)
+                self.nyquist_subcircuit_markers.append(marker_tag)
+                with dpg.group(horizontal=True):
+                    dpg.add_text(f"Subcircuit {i + 1}".rjust(self.label_pad))
+                    dpg.add_color_edit(
+                        default_value=STATE.config.colors[key],
+                        alpha_preview=dpg.mvColorEdit_AlphaPreviewHalf,
+                        no_inputs=True,
+                        alpha_bar=True,
+                        callback=self.update_nyquist_color,
+                        user_data=theme,
+                        tag=color_tag,
+                    )
+                    dpg.add_combo(
+                        items=self.marker_items,
+                        default_value=self.marker_label_lookup[
+                            STATE.config.markers[key]
+                        ],
+                        callback=self.update_nyquist_marker,
+                        user_data=theme,
+                        tag=marker_tag,
+                        width=-1,
+                    )
             with dpg.group(horizontal=True):
                 dpg.add_text("".rjust(self.label_pad))
                 dpg.add_button(
@@ -1120,17 +1152,21 @@ This affects how smooth the lines will look when plotting the impedance response
         if adjust_limits:
             self.nyquist_plot.adjust_limits()
 
+    @staticmethod
+    def get_nyquist_key(theme: int) -> str:
+        if theme == themes.nyquist.data:
+            return "nyquist_data"
+        elif theme == themes.nyquist.simulation:
+            return "nyquist_simulation"
+
+        return f"nyquist_subcircuit_{themes.nyquist.subcircuits.index(theme) + 1}"
+
     def update_nyquist_color(self, sender: int, _, theme: int):
         assert type(sender) is int
         assert type(theme) is int
         color: List[float] = dpg.get_value(sender)
         themes.update_plot_series_theme_color(theme, color)
-        STATE.config.colors[
-            {
-                themes.nyquist.data: "nyquist_data",
-                themes.nyquist.simulation: "nyquist_simulation",
-            }[theme]
-        ] = color
+        STATE.config.colors[self.get_nyquist_key(theme)] = color
 
     def update_nyquist_marker(self, sender: int, label: str, theme: int):
         assert type(sender) is int
@@ -1138,12 +1174,7 @@ This affects how smooth the lines will look when plotting the impedance response
         assert type(theme) is int
         marker: int = PLOT_MARKERS[label]
         themes.update_plot_series_theme_marker(theme, marker)
-        STATE.config.markers[
-            {
-                themes.nyquist.data: "nyquist_data",
-                themes.nyquist.simulation: "nyquist_simulation",
-            }[theme]
-        ] = marker
+        STATE.config.markers[self.get_nyquist_key(theme)] = marker
 
     def reset_nyquist_plot(self):
         dpg.set_value(
@@ -1176,6 +1207,26 @@ This affects how smooth the lines will look when plotting the impedance response
             dpg.get_value(self.nyquist_sim_marker),
             themes.nyquist.simulation,
         )
+
+        i: int
+        theme: int
+        for i, theme in enumerate(themes.nyquist.subcircuits):
+            key: str = f"nyquist_subcircuit_{i + 1}"
+            dpg.set_value(
+                self.nyquist_subcircuit_colors[i],
+                DEFAULT_COLORS[key].copy(),
+            )
+            self.update_nyquist_color(
+                self.nyquist_subcircuit_colors[i],
+                None,
+                theme,
+            )
+            dpg.set_value(self.nyquist_subcircuit_markers[i], "Circle")
+            self.update_nyquist_marker(
+                self.nyquist_subcircuit_markers[i],
+                dpg.get_value(self.nyquist_subcircuit_markers[i]),
+                theme,
+            )
 
     def update_residuals_plot(self, adjust_limits: bool = False):
         self.residuals_plot.clear()

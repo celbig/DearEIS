@@ -21,7 +21,7 @@ These functions are used by the wrapper functions to make a more complex figure 
 These are all the same as those included in pyimpspec_.
 
 .. automodule:: deareis.mpl
-   :members: plot_bht_scores, plot_bode, plot_real_imaginary, plot_gamma, plot_imaginary, plot_magnitude, plot_mu_xps, plot_nyquist, plot_phase, plot_real, plot_residuals
+   :members: plot_bht_scores, plot_bode, plot_real_imaginary, plot_gamma, plot_imaginary, plot_magnitude, plot_mu_xps, plot_nyquist, plot_phase, plot_real, plot_residuals, plot_subcircuits
 
 
 Examples
@@ -249,6 +249,48 @@ plot_fit
   mpl.show()
 
   figure, axes = mpl.plot_residuals(fit)
+  figure.tight_layout()
+  mpl.show()
+
+.. raw:: latex
+
+    \clearpage
+
+
+plot_subcircuits
+~~~~~~~~~~~~~~~~
+:func:`~deareis.mpl.plot_subcircuits`
+
+The contributions of the components in series (e.g., ``R``, ``(RC)``, and ``(RW)`` in ``R(RC)(RW)``) can also be included when using :func:`~deareis.mpl.plot` or :func:`~deareis.mpl.plot_fit` by setting ``subcircuits=True``.
+The ``subcircuit_offset`` parameter chooses whether or not the series resistance is added to the other contributions.
+
+.. plot::
+
+  from deareis import mpl
+  import pyimpspec
+  import pyimpspec.plot.colors as colors
+
+  data = pyimpspec.generate_mock_data("CIRCUIT_1", noise=5e-2, seed=42)[0]
+  circuit = pyimpspec.parse_cdc("R(RC)(RW)")
+  fit = pyimpspec.fit_circuit(circuit, data=data)
+
+  figure, axes = mpl.plot_nyquist(
+    data,
+    colors={"impedance": colors.COLOR_BLACK},
+    legend=False,
+  )
+  _ = mpl.plot_nyquist(
+    fit,
+    line=True,
+    figure=figure,
+    axes=axes,
+    legend=False,
+  )
+  _ = mpl.plot_subcircuits(
+    fit,
+    figure=figure,
+    axes=axes,
+  )
   figure.tight_layout()
   mpl.show()
 
