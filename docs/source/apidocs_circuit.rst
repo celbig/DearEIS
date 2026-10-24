@@ -6,7 +6,7 @@ Equivalent circuits
 Functions
 ---------
 .. automodule:: deareis
-   :members: parse_cdc, register_element
+   :members: parse_cdc, parse_mdl, register_element
 
 
 Base classes

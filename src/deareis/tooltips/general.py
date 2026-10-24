@@ -37,6 +37,13 @@ Copy the chosen output to the clipboard.
         "open_circuit_editor": """
 Open the circuit editor.
     """.strip(),
+        "load_circuit_file": """
+Load an equivalent circuit from a file. ZView circuit models (.mdl) are supported.
+
+The names of the elements are used as labels, and the values and fixed/free status of the parameters are retained.
+
+Supported ZView elements: R, C, L, CPE, QPE, GE, Ws, Wo, Ls, and Lo (only if Phi = 1).
+    """.strip(),
         "adjust_plot_limits": """
 Automatically adjust the limits of the plot to fit the data.
     """.strip(),

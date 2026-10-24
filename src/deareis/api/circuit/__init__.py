@@ -36,4 +36,5 @@ from pyimpspec import (
     Circuit,
     CircuitBuilder,
     parse_cdc,
+    parse_mdl,
 )

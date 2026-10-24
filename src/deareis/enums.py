@@ -126,6 +126,7 @@ class Action(IntEnum):
     SHOW_ENLARGED_DRT = auto()
     SHOW_ENLARGED_IMPEDANCE = auto()
     SHOW_CIRCUIT_EDITOR = auto()
+    LOAD_CIRCUIT_FILE = auto()
     # - Fitting tab
     # - Simulation tab
     COPY_DRT_DATA = auto()
@@ -321,6 +322,10 @@ action_contexts: Dict[Action, List[Context]] = {
         Context.FITTING_TAB,
         Context.SIMULATION_TAB,
     ],
+    Action.LOAD_CIRCUIT_FILE: [
+        Context.FITTING_TAB,
+        Context.SIMULATION_TAB,
+    ],
     Action.COPY_DRT_DATA: [
         Context.DRT_TAB,
     ],
@@ -420,6 +425,7 @@ action_to_string: Dict[Action, str] = {
     Action.SELECT_SIMULATION_TAB: "select-simulation-tab",
     Action.SHOW_CHANGELOG: "show-changelog",
     Action.SHOW_CIRCUIT_EDITOR: "show-circuit-editor",
+    Action.LOAD_CIRCUIT_FILE: "load-circuit-file",
     Action.SHOW_COMMAND_PALETTE: "show-command-palette",
     Action.SHOW_DATA_SET_PALETTE: "show-data-set-palette",
     Action.SHOW_RESULT_PALETTE: "show-result-palette",
@@ -646,6 +652,9 @@ Show an enlarged residuals plot.
 """.strip(),
     Action.SHOW_CIRCUIT_EDITOR: """
 Show the circuit editor window.
+""".strip(),
+    Action.LOAD_CIRCUIT_FILE: """
+Load an equivalent circuit from a file (e.g., a ZView .mdl file).
 """.strip(),
     Action.COPY_DRT_DATA: """
 Copy the data from the DRT plot.

@@ -7,6 +7,10 @@
 - Added the `subcircuits` and `subcircuit_offset` parameters to `deareis.mpl.plot` for including the contributions in Nyquist plots of circuit fits.
 - Added the `deareis.mpl.plot_subcircuits` function and the `subcircuits` and `subcircuit_offset` parameters of `deareis.mpl.plot_fit` (both from pyimpspec), which now also work with `deareis.FitResult` instances.
 - Updated the minimum version of pyimpspec to 5.3.
+- Added support for importing equivalent circuits from ZView circuit models (`.mdl` files) via the new **Load** button next to the circuit input in the **Fitting** and **Simulation** tabs.
+  - The names of the elements are used as labels, and the values and fixed/free status of the parameters are retained.
+  - A `load-circuit-file` action, which can be assigned a keybinding or used via the command palette, was also added.
+- Added the `parse_mdl` function to the API.
 - Fixed a bug that could cause exception messages (e.g., "Item not found") in the terminal when a plot was deleted (e.g., a window with a plot was closed) while the limits of the plot were being adjusted.
 - Fixed a bug that caused an exception when adjusting the limits of an empty plot of residuals.
 

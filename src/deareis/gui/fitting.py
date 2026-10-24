@@ -165,15 +165,17 @@ class SettingsMenu:
         label_pad: int,
         circuit_editor: Optional[CircuitEditor] = None,
         editor_callback: Optional[Callable] = None,
+        load_callback: Optional[Callable] = None,
     ):
         self.circuit_editor: Optional[CircuitEditor] = circuit_editor
+        num_buttons: int = (circuit_editor is not None) + (load_callback is not None)
         with dpg.group(horizontal=True):
             dpg.add_text("Circuit".rjust(label_pad))
             attach_tooltip(tooltips.fitting.cdc)
 
             self.cdc_input: Tag = dpg.generate_uuid()
             dpg.add_input_text(
-                width=-50 if circuit_editor is not None else -1,
+                width=-50 * num_buttons if num_buttons > 0 else -1,
                 tag=self.cdc_input,
                 on_enter=True,
                 callback=lambda s, a, u: self.parse_cdc(a, s),
@@ -182,6 +184,16 @@ class SettingsMenu:
             self.cdc_tooltip: Tag = dpg.generate_uuid()
             attach_tooltip("", tag=self.cdc_tooltip, parent=self.cdc_input)
             dpg.hide_item(dpg.get_item_parent(self.cdc_tooltip))
+
+            if load_callback is not None:
+                self.load_button: Tag = dpg.generate_uuid()
+                dpg.add_button(
+                    label="Load",
+                    callback=load_callback,
+                    width=-50 if circuit_editor is not None else -1,
+                    tag=self.load_button,
+                )
+                attach_tooltip(tooltips.general.load_circuit_file)
 
             if circuit_editor is not None:
                 self.editor_button: Tag = dpg.generate_uuid()
@@ -1015,6 +1027,10 @@ class FittingTab:
                 label_pad,
                 circuit_editor=self.circuit_editor,
                 editor_callback=self.show_circuit_editor,
+                load_callback=lambda s, a, u: signals.emit(
+                    Signal.SELECT_CIRCUIT_FILE,
+                    context=Context.FITTING_TAB,
+                ),
             )
 
             with dpg.group(horizontal=True):

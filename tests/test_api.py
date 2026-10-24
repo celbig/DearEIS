@@ -50,6 +50,7 @@ matplotlib.use("Agg")
 
 TEST_PROJECT_PATH: str = join(dirname(__file__), "example-project-v5.json")
 TEST_DATA_PATH: str = join(dirname(__file__), "data-1.idf")
+TEST_MDL_PATH: str = join(dirname(__file__), "zview-supported.mdl")
 
 
 class TestData(TestCase):
@@ -179,6 +180,33 @@ class TestCDC(TestCase):
                     series += deareis.Warburg()
                 parallel += deareis.Capacitor(C=1.68e-11).set_label("dl")
         self.assertEqual(builder.to_string(), self.circuit.to_string())
+
+
+class TestMDL(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.control_circuit: pyimpspec.Circuit = pyimpspec.parse_mdl(TEST_MDL_PATH)
+        cls.circuit: deareis.Circuit = deareis.parse_mdl(TEST_MDL_PATH)
+
+    def test_return_type(self):
+        self.assertEqual(type(self.control_circuit), type(self.circuit))
+
+    def test_to_string(self):
+        self.assertEqual(self.control_circuit.serialize(), self.circuit.serialize())
+        self.assertEqual(str(self.circuit), "[(RR)CLQQGWsWoLsG]")
+
+    def test_serialize(self):
+        # The GUI stores circuits as serialized CDCs, which must retain the labels and fixed parameters.
+        circuit: deareis.Circuit = deareis.parse_cdc(self.circuit.serialize())
+        self.assertEqual(circuit.serialize(), self.circuit.serialize())
+        self.assertEqual(
+            [element.get_label() for element in circuit.get_elements()],
+            [element.get_label() for element in self.circuit.get_elements()],
+        )
+        self.assertEqual(
+            [element.are_fixed() for element in circuit.get_elements()],
+            [element.are_fixed() for element in self.circuit.get_elements()],
+        )
 
 
 class TestConfig(TestCase):

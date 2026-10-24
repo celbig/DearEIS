@@ -127,6 +127,10 @@ from .simulation import (
     perform_simulation,
     select_simulation_result,
 )
+from .circuits import (
+    load_circuit_file,
+    select_circuit_file,
+)
 from .plotting import (
     copy_plot_appearance_settings,
     delete_plot_settings,
@@ -1067,6 +1071,10 @@ def initialize_program(args: Namespace):
     signals.register(Signal.SELECT_SIMULATION_RESULT, select_simulation_result)
     signals.register(Signal.DELETE_SIMULATION_RESULT, delete_simulation_result)
     signals.register(Signal.APPLY_SIMULATION_SETTINGS, apply_simulation_settings)
+
+    # Signals for the fitting and simulation tabs
+    signals.register(Signal.SELECT_CIRCUIT_FILE, select_circuit_file)
+    signals.register(Signal.LOAD_CIRCUIT_FILE, load_circuit_file)
 
     # Signals for the plotting tab
     signals.register(Signal.NEW_PLOT_SETTINGS, new_plot_settings)

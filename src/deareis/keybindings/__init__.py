@@ -646,6 +646,8 @@ class KeybindingHandler:
                     project_tab.fitting_tab.show_circuit_editor()
                 elif context == Context.SIMULATION_TAB:
                     project_tab.simulation_tab.show_circuit_editor()
+            elif action == Action.LOAD_CIRCUIT_FILE:
+                signals.emit(Signal.SELECT_CIRCUIT_FILE, context=context)
             elif action == Action.COPY_DRT_DATA:
                 signals.emit(
                     Signal.COPY_PLOT_DATA,
