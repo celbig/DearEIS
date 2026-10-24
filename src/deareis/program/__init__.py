@@ -639,9 +639,14 @@ def copy_plot_data(*args, **kwargs):
 
     elif type(plot) is Nyquist:
         for series in plot.get_series():
+            if series.get("subcircuit", False) and admittance is True:
+                continue  # Contributions in series do not add up as admittances
+
             label = "Data"
             if context != Context.PLOTTING_TAB:
-                if series.get("simulation", False):
+                if series.get("subcircuit", False):
+                    label = series["label"]
+                elif series.get("simulation", False):
                     label = "Sim."
                 elif series.get("fit", False):
                     label = "Fit"

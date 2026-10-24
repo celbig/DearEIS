@@ -290,6 +290,14 @@ def update_plot_series_theme_marker(parent: int, marker: int):
             dpg.set_value(i, [marker, -1])
 
 
+NYQUIST_SUBCIRCUIT_COLORS: List[List[float]] = [
+    [0.0, 119.0, 187.0, 190.0],  # Blue
+    [0.0, 153.0, 136.0, 190.0],  # Teal
+    [238.0, 119.0, 51.0, 190.0],  # Orange
+    [204.0, 51.0, 17.0, 190.0],  # Red
+    [187.0, 187.0, 187.0, 190.0],  # Gray
+]
+
 nyquist: SimpleNamespace = SimpleNamespace(
     **{
         "data": create_plot_series_theme(
@@ -300,6 +308,13 @@ nyquist: SimpleNamespace = SimpleNamespace(
             [238.0, 51.0, 119.0, 190.0],
             dpg.mvPlotMarker_Cross,
         ),
+        "subcircuits": [
+            create_plot_series_theme(
+                color,
+                dpg.mvPlotMarker_Circle,
+            )
+            for color in NYQUIST_SUBCIRCUIT_COLORS
+        ],
     }
 )
 

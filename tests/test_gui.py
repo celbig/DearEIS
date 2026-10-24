@@ -1797,6 +1797,45 @@ Element & Parameter & Value & Std. err. (\%) & Unit & Fixed \\
         editor.callback(dpg.get_item_user_data(editor.accept_button))
 
     @next_step(circuit_editor)
+    def subcircuits():
+        print("  - Subcircuits")
+        assert STATE.is_project_dirty(project) is False
+        tab = project_tab.fitting_tab
+        num_base: int = 3  # Data, fit markers, and fit line
+        num_series = lambda: len(tab.nyquist_plot.get_series())
+        series_visible = lambda: [
+            dpg.get_item_configuration(_)["show"]
+            for _ in dpg.get_item_children(tab.nyquist_plot._y_axis, slot=1)
+        ]
+        dpg.set_value(tab.nyquist_subcircuits_checkbox, True)
+        tab.toggle_subcircuits(True)
+        labels = [_["label"] for _ in tab.nyquist_plot.get_series()[num_base:]]
+        assert len(labels) > 0
+        assert all(series_visible())
+        tab.select_subcircuit_offset("No offset")
+        num_no_offset: int = num_series()
+        tab.select_subcircuit_offset("Series R offset")
+        assert num_series() <= num_no_offset
+        tab.select_subcircuit_offset("No offset")
+        signals.emit(
+            Signal.COPY_PLOT_DATA,
+            plot=tab.nyquist_plot,
+            context=Context.FITTING_TAB,
+        )
+        sleep(0.5)
+        headers = dpg.get_clipboard_text().split("\n")[0]
+        assert labels[-1] in headers, (labels, headers)
+        dpg.set_value(tab.nyquist_admittance_checkbox, True)
+        tab.toggle_plot_admittance(True)
+        assert not any(series_visible()[num_base:])
+        dpg.set_value(tab.nyquist_admittance_checkbox, False)
+        tab.toggle_plot_admittance(False)
+        assert all(series_visible())
+        dpg.set_value(tab.nyquist_subcircuits_checkbox, False)
+        tab.toggle_subcircuits(False)
+        assert num_series() == num_base
+
+    @next_step(subcircuits)
     def cycle_data_sets():
         print("  - Cycle data sets")
         perform_action(action=Action.NEXT_PRIMARY_RESULT)

@@ -27,6 +27,16 @@ If one or both of these settings are set to **Auto**, then combinations of itera
 The results are presented in the form of a table containing the fitted parameter values (and, if possible, error estimates for the fitted parameter values), a table containing statistics pertaining to the quality of the fit, three plots (Nyquist, Bode, and relative errors of the fit), and a preview of the circuit that was fitted to the data set.
 If you hover the mouse cursor over the cells in the tables, then you can get additional information (e.g., more precise values or explanations).
 
+The **Subcircuits** checkbox below the Nyquist plot shows the contribution of each component that is connected in series in the fitted circuit (e.g., ``R``, ``(RC)``, and ``(RW)`` for ``R(RC)(RW)``).
+Since the impedances of components in series add up, these contributions sum up to the impedance of the whole circuit, which makes it possible to judge whether each part of the circuit corresponds to a feature in the data that makes physical sense.
+The dropdown menu next to the checkbox chooses where the contributions are placed on the real axis:
+
+- **No offset**: each contribution starts from the origin and the values are exact. Resistors in series are shown as single points.
+- **Series R offset**: the sum of the resistors in series (e.g., the ohmic resistance) is added to the real part of the other contributions and the resistors are not shown separately.
+
+The contributions are not shown when plotting admittance because components in series do not add up as admittances.
+The colors and markers of the contributions can be changed in the **Appearance** settings.
+
 .. note::
 
    It may not always be possible to estimate errors for fitted parameters.

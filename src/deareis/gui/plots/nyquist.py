@@ -133,8 +133,21 @@ class Nyquist(Plot):
                     list(imag),
                 ],
             )
-            dpg.show_item(series)
+            if self._series[index].get("subcircuit", False) and self._admittance:
+                dpg.hide_item(series)  # Contributions in series do not add up as admittances
+            else:
+                dpg.show_item(series)
             break
+
+    def delete_series(self, index: int):
+        assert type(index) is int and index >= 0, index
+        assert len(self._series) > index, (
+            index,
+            len(self._series),
+        )
+        series: Tag = dpg.get_item_children(self._y_axis, slot=1)[index]
+        dpg.delete_item(series)
+        self._series.pop(index)
 
     def plot(self, *args, **kwargs) -> int:
         assert len(args) == 0, args
@@ -147,6 +160,7 @@ class Nyquist(Plot):
         line: bool = kwargs.get("line", False)
         theme: Optional[int] = kwargs.get("theme")
         show_label: bool = kwargs.get("show_label", True)
+        subcircuit: bool = kwargs.get("subcircuit", False)
 
         assert type(real) is ndarray, real
         assert type(imag) is ndarray, imag
@@ -156,6 +170,7 @@ class Nyquist(Plot):
         assert type(line) is bool, line
         assert type(theme) is int or theme is None, theme
         assert type(show_label) is bool, show_label
+        assert type(subcircuit) is bool, subcircuit
 
         self._series.append(kwargs)
         func: Callable = dpg.add_scatter_series if not line else dpg.add_line_series
@@ -167,6 +182,9 @@ class Nyquist(Plot):
         )
         if theme is not None:
             dpg.bind_item_theme(tag, theme)
+
+        if subcircuit and self._admittance:
+            dpg.hide_item(tag)
 
         return tag
 

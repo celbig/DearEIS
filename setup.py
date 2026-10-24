@@ -14,7 +14,7 @@ dependencies = [
     'dearpygui==2.2;python_version>="3.13"',  # Used to implement the GUI.
     'dearpygui~=1.11;python_version<="3.12"',  # Used to implement the GUI.
     "requests~=2.33",  # Used to check package status on PyPI.
-    "pyimpspec~=5.1",  # Used for parsing, fitting, and analyzing impedance spectra.
+    "pyimpspec~=5.3",  # Used for parsing, fitting, and analyzing impedance spectra.
 ]
 
 dev_dependencies = [
