@@ -17,6 +17,7 @@
 # The licenses of DearEIS' dependencies and/or sources of portions of code are included in
 # the LICENSES folder.
 
+from dataclasses import replace
 from json import dumps
 from math import isclose
 from os import (
@@ -41,6 +42,7 @@ from typing import (
     List,
     Optional,
 )
+from numpy import zeros_like
 from pyimpspec.analysis.zhit.weights import (
     _WINDOW_FUNCTIONS,
     _initialize_window_functions,
@@ -62,6 +64,7 @@ from deareis.enums import (
     CrossValidationMethod,
     DRTMethod,
     DRTMode,
+    DRTPeakShape,
     PlotType,
     RBFShape,
     RBFType,
@@ -80,6 +83,7 @@ from deareis.enums import (
 )
 from deareis.gui.settings import refresh_user_defined_elements
 from deareis.data import (
+    DRTPeakSettings,
     DRTSettings,
     FitSettings,
     Project,
@@ -89,6 +93,7 @@ from deareis.data import (
     ZHITSettings,
 )
 from deareis.data.project import VERSION as LATEST_PROJECT_VERSION
+from deareis.api.drt import analyze_drt_peaks
 from deareis.gui import ProjectTab
 from deareis.utility import sleep
 
@@ -901,7 +906,7 @@ def test_drt_tab():
         project=project,
         project_tab=project_tab,
     )
-    outputs: List[str] = list(label_to_drt_output.keys())
+    outputs: List[str] = [_ for _ in label_to_drt_output.keys() if "peaks" not in _]
 
     @next_step(test_simulation_tab)
     def result_palette():
@@ -918,6 +923,154 @@ def test_drt_tab():
         STATE.active_modal_window_object.hide()
 
     @next_step(data_set_palette)
+    def validate_clear_peaks():
+        assert STATE.is_project_dirty(project) is True
+        drt = project_tab.get_active_drt()
+        assert drt.peak_analysis is None
+        section = project_tab.drt_tab.peak_analysis_section
+        assert not dpg.is_item_enabled(section.clear_button)
+        assert len(project_tab.drt_tab.drt_plot.get_series()) == 2  # real, imag.
+        signals.emit(Signal.SAVE_PROJECT)
+
+    @next_step(validate_clear_peaks)
+    def clear_peaks():
+        print("  - Clear peaks")
+        signals.emit(
+            Signal.CLEAR_DRT_PEAKS,
+            drt=project_tab.get_active_drt(),
+            data=project_tab.get_active_data_set(),
+        )
+
+    @next_step(clear_peaks)
+    def validate_no_peaks_found():
+        section = project_tab.drt_tab.peak_analysis_section
+        assert dpg.get_value(section._summary).startswith("No peaks found")
+        project_tab.drt_tab.select_drt_result(
+            project_tab.get_active_drt(),
+            project_tab.get_active_data_set(),
+        )
+
+    @next_step(validate_no_peaks_found)
+    def no_peaks_found():
+        print("  - No peaks found")
+        drt = project_tab.get_active_drt()
+        empty = replace(
+            drt,
+            real_gammas=zeros_like(drt.real_gammas),
+            imaginary_gammas=zeros_like(drt.imaginary_gammas),
+        )
+        empty.peak_analysis = analyze_drt_peaks(
+            empty,
+            DRTPeakSettings(
+                shape=DRTPeakShape.SKEW_NORMAL,
+                num_peaks=0,
+                peak_positions=[],
+                disallow_skew=False,
+                global_optimization=False,
+            ),
+        )
+        assert empty.peak_analysis.get_num_peaks() == 0
+        project_tab.drt_tab.peak_analysis_section.populate(
+            empty,
+            project_tab.get_active_data_set(),
+        )
+
+    @next_step(no_peaks_found)
+    def validate_apply_peak_settings():
+        settings = project_tab.drt_tab.peak_analysis_section.get_settings()
+        assert settings.shape == DRTPeakShape.GAUSSIAN
+        assert settings.num_peaks == 2
+        assert settings.peak_positions == [0.0001, 0.01]
+        assert settings.disallow_skew is True
+        assert settings.global_optimization is True
+
+    @next_step(validate_apply_peak_settings)
+    def apply_peak_settings():
+        print("  - Apply peak analysis settings")
+        signals.emit(
+            Signal.APPLY_DRT_SETTINGS,
+            settings=project_tab.get_drt_settings(),
+            peak_settings=DRTPeakSettings(
+                shape=DRTPeakShape.GAUSSIAN,
+                num_peaks=2,
+                peak_positions=[0.0001, 0.01],
+                disallow_skew=True,
+                global_optimization=True,
+            ),
+        )
+
+    @next_step(apply_peak_settings)
+    def validate_copy_peaks_drt():
+        text = dpg.get_clipboard_text().strip()
+        headers = text.split("\n")[0].strip()
+        assert "gamma (ohm) - Peak 1, real" in headers, headers
+        assert "gamma (ohm) - Peak 1, imag." in headers, headers
+        assert "gamma (ohm) - Sum of peaks, real" in headers, headers
+        assert "gamma (ohm) - Sum of peaks, imag." in headers, headers
+
+    @next_step(validate_copy_peaks_drt)
+    def copy_peaks_drt():
+        print("  - Copy DRT with peaks")
+        perform_action(action=Action.COPY_DRT_DATA)
+
+    @next_step(copy_peaks_drt)
+    def validate_copy_peaks_outputs():
+        expectations = {
+            "CSV - peaks": lambda _: _.startswith(
+                "part,#,tau (s),gamma (ohm),R_peak (ohm)\nreal,1,"
+            ),
+            "JSON - peaks": lambda _: _.startswith('{"part":{"0":"real"'),
+            "LaTeX - peaks": lambda _: _.startswith(r"\begin{tabular}{lrrrr}")
+            and "R_{\\rm peak}" in _,
+            "Markdown - peaks": lambda _: _.startswith("| part   |   # |"),
+        }
+        assert set(expectations) == {
+            _ for _ in label_to_drt_output if "peaks" in _
+        }
+        for output, validate in expectations.items():
+            project_tab.drt_tab.output_combo.set_label(output)
+            perform_action(action=Action.COPY_OUTPUT)
+            sleep(0.5)
+            text = dpg.get_clipboard_text().strip()
+            assert validate(text), (output, text)
+
+    @next_step(validate_copy_peaks_outputs)
+    def validate_analyze_peaks():
+        assert STATE.is_project_dirty(project) is True
+        drt = project_tab.get_active_drt()
+        assert drt.peak_analysis is not None
+        assert drt.peak_analysis.settings.shape == DRTPeakShape.ZARC
+        assert drt.peak_analysis.real.get_num_peaks() > 0
+        assert drt.peak_analysis.imaginary is not None
+        assert drt.peak_analysis.imaginary.get_num_peaks() > 0
+        section = project_tab.drt_tab.peak_analysis_section
+        assert dpg.is_item_enabled(section.clear_button)
+        assert dpg.is_item_shown(section._table)
+        # Data, imaginary, and a fill for each peak plus the sum for both parts
+        assert len(project_tab.drt_tab.drt_plot.get_series()) == 2 + sum(
+            (peaks.get_num_peaks() + 1)
+            for peaks in (drt.peak_analysis.real, drt.peak_analysis.imaginary)
+        )
+        signals.emit(Signal.SAVE_PROJECT)
+
+    @next_step(validate_analyze_peaks)
+    def analyze_peaks():
+        print("  - Analyze peaks")
+        assert STATE.is_project_dirty(project) is False
+        signals.emit(
+            Signal.ANALYZE_DRT_PEAKS,
+            drt=project_tab.get_active_drt(),
+            data=project_tab.get_active_data_set(),
+            settings=DRTPeakSettings(
+                shape=DRTPeakShape.ZARC,
+                num_peaks=0,
+                peak_positions=[],
+                disallow_skew=False,
+                global_optimization=False,
+            ),
+        )
+
+    @next_step(analyze_peaks)
     def validate_copy_markdown_scores():
         assert STATE.is_project_dirty(project) is False
         text = dpg.get_clipboard_text().strip()
