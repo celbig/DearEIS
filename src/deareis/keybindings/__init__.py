@@ -569,6 +569,11 @@ class KeybindingHandler:
                     signals.emit(
                         Signal.APPLY_DRT_SETTINGS,
                         settings=drt.settings if drt is not None else None,
+                        peak_settings=(
+                            drt.peak_analysis.settings
+                            if drt is not None and drt.peak_analysis is not None
+                            else None
+                        ),
                     )
                 elif context == Context.FITTING_TAB:
                     fit = project_tab.get_active_fit()

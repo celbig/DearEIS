@@ -17,6 +17,8 @@
 # The licenses of DearEIS' dependencies and/or sources of portions of code are included in
 # the LICENSES folder.
 
+from re import split as re_split
+from traceback import format_exc
 from typing import (
     Callable,
     Dict,
@@ -30,10 +32,12 @@ from numpy import (
     complex128,
     log10 as log,
     ndarray,
+    zeros_like,
 )
 from pyimpspec.exceptions import DRTError
 from pyimpspec import (
     ComplexImpedances,
+    DRTPeaks,
     ComplexResiduals,
     Frequencies,
 )
@@ -48,6 +52,8 @@ from deareis.utility import (
     render_math,
 )
 from deareis.data.drt import (
+    DRTPeakAnalysis,
+    DRTPeakSettings,
     DRTSettings,
     DRTResult,
 )
@@ -57,16 +63,19 @@ from deareis.enums import (
     DRTMethod,
     DRTMode,
     DRTOutput,
+    DRTPeakShape,
     TRNNLSLambdaMethod,
     cross_validation_method_to_label,
     derivative_order_to_label,
     drt_method_to_label,
     drt_mode_to_label,
+    drt_peak_shape_to_label,
     label_to_cross_validation_method,
     label_to_derivative_order,
     label_to_drt_method,
     label_to_drt_mode,
     label_to_drt_output,
+    label_to_drt_peak_shape,
     label_to_rbf_shape,
     label_to_rbf_type,
     label_to_tr_nnls_lambda_method,
@@ -1350,7 +1359,12 @@ class SettingsTable:
         )
         dpg.set_item_user_data(
             self._apply_settings_button,
-            {"settings": drt.settings},
+            {
+                "settings": drt.settings,
+                "peak_settings": (
+                    drt.peak_analysis.settings if drt.peak_analysis is not None else None
+                ),
+            },
         )
         dpg.set_item_user_data(
             self._apply_mask_button,
@@ -1360,6 +1374,257 @@ class SettingsTable:
                 "drt": drt,
             },
         )
+
+
+DEFAULT_DRT_PEAK_SETTINGS: DRTPeakSettings = DRTPeakSettings(
+    shape=DRTPeakShape.SKEW_NORMAL,
+    num_peaks=0,
+    peak_positions=[],
+    disallow_skew=False,
+    global_optimization=False,
+)
+
+
+class PeakAnalysisSection:
+    def __init__(self, label_pad: int):
+        default_settings: DRTPeakSettings = DEFAULT_DRT_PEAK_SETTINGS
+        self._header: Tag = dpg.generate_uuid()
+        with dpg.collapsing_header(
+            label=" Peak analysis",
+            leaf=True,
+            show=False,
+            tag=self._header,
+        ):
+            with dpg.group(horizontal=True):
+                dpg.add_text("Shape".rjust(label_pad))
+                attach_tooltip(tooltips.drt.peak_shape)
+
+                self.shape_combo: Combo = Combo(
+                    default_value=drt_peak_shape_to_label[default_settings.shape],
+                    items=list(label_to_drt_peak_shape.keys()),
+                    callback=lambda s, a, u: self.update_settings(),
+                    user_data=label_to_drt_peak_shape,
+                    width=-1,
+                )
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Number of peaks".rjust(label_pad))
+                attach_tooltip(tooltips.drt.num_peaks)
+
+                self.num_peaks_input: Tag = dpg.generate_uuid()
+                dpg.add_input_int(
+                    default_value=default_settings.num_peaks,
+                    min_value=0,
+                    min_clamped=True,
+                    step=0,
+                    on_enter=True,
+                    width=-1,
+                    tag=self.num_peaks_input,
+                )
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Positions (s)".rjust(label_pad))
+                attach_tooltip(tooltips.drt.peak_positions)
+
+                self.peak_positions_input: Tag = dpg.generate_uuid()
+                dpg.add_input_text(
+                    hint="e.g., 1e-4, 1e-2",
+                    width=-1,
+                    tag=self.peak_positions_input,
+                )
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Disallow skew".rjust(label_pad))
+                attach_tooltip(tooltips.drt.disallow_skew)
+
+                self.disallow_skew_checkbox: Tag = dpg.generate_uuid()
+                dpg.add_checkbox(
+                    default_value=default_settings.disallow_skew,
+                    tag=self.disallow_skew_checkbox,
+                )
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Global optimization".rjust(label_pad))
+                attach_tooltip(tooltips.drt.global_optimization)
+
+                self.global_optimization_checkbox: Tag = dpg.generate_uuid()
+                dpg.add_checkbox(
+                    default_value=default_settings.global_optimization,
+                    tag=self.global_optimization_checkbox,
+                )
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("".rjust(label_pad))
+                self.analyze_button: Tag = dpg.generate_uuid()
+                dpg.add_button(
+                    label="Analyze peaks",
+                    callback=lambda s, a, u: self.analyze(u),
+                    user_data={},
+                    width=-70,
+                    tag=self.analyze_button,
+                )
+                attach_tooltip(tooltips.drt.analyze_peaks)
+
+                self.clear_button: Tag = dpg.generate_uuid()
+                dpg.add_button(
+                    label="Clear",
+                    callback=lambda s, a, u: signals.emit(
+                        Signal.CLEAR_DRT_PEAKS,
+                        **u,
+                    ),
+                    user_data={},
+                    width=-1,
+                    enabled=False,
+                    tag=self.clear_button,
+                )
+                attach_tooltip(tooltips.drt.clear_peaks)
+
+            self._summary: Tag = dpg.generate_uuid()
+            dpg.add_text("", show=False, wrap=330, tag=self._summary)
+
+            self._table: Tag = dpg.generate_uuid()
+            with dpg.table(
+                borders_outerV=True,
+                borders_outerH=True,
+                borders_innerV=True,
+                borders_innerH=True,
+                scrollY=True,
+                freeze_rows=1,
+                height=18 + 23,
+                show=False,
+                tag=self._table,
+            ):
+                pass  # The columns are created when the table is populated.
+
+            dpg.add_spacer(height=8)
+
+        self.update_settings()
+
+    def get_peak_positions(self) -> List[float]:
+        text: str = dpg.get_value(self.peak_positions_input).strip()
+        positions: List[float] = []
+        token: str
+        for token in re_split(r"[,;\s]+", text):
+            if token == "":
+                continue
+
+            try:
+                value: float = float(token)
+            except ValueError:
+                raise ValueError(f"Invalid peak position: '{token}'")
+
+            if not value > 0.0 or value == float("inf"):
+                raise ValueError(f"The peak positions must be positive: '{token}'")
+
+            positions.append(value)
+
+        return positions
+
+    def get_settings(self) -> DRTPeakSettings:
+        return DRTPeakSettings(
+            shape=self.shape_combo.get_value(),
+            num_peaks=max(0, dpg.get_value(self.num_peaks_input)),
+            peak_positions=self.get_peak_positions(),
+            disallow_skew=dpg.get_value(self.disallow_skew_checkbox),
+            global_optimization=dpg.get_value(self.global_optimization_checkbox),
+        )
+
+    def set_settings(self, settings: DRTPeakSettings):
+        self.shape_combo.set_value(settings.shape)
+        dpg.set_value(self.num_peaks_input, settings.num_peaks)
+        dpg.set_value(
+            self.peak_positions_input,
+            ", ".join(f"{_:.4g}" for _ in settings.peak_positions),
+        )
+        dpg.set_value(self.disallow_skew_checkbox, settings.disallow_skew)
+        dpg.set_value(self.global_optimization_checkbox, settings.global_optimization)
+        self.update_settings()
+
+    def update_settings(self):
+        # Skew is only relevant for skew normal peaks
+        group: Tag = dpg.get_item_parent(self.disallow_skew_checkbox)
+        if self.shape_combo.get_value() is DRTPeakShape.SKEW_NORMAL:
+            dpg.show_item(group)
+        else:
+            dpg.hide_item(group)
+
+    def has_active_input(self) -> bool:
+        return any(
+            dpg.is_item_active(_)
+            for _ in (self.num_peaks_input, self.peak_positions_input)
+        )
+
+    def analyze(self, user_data: dict):
+        try:
+            settings: DRTPeakSettings = self.get_settings()
+        except ValueError:
+            signals.emit(
+                Signal.SHOW_ERROR_MESSAGE,
+                traceback=format_exc(),
+                message="The peak analysis settings are invalid!",
+            )
+            return
+
+        signals.emit(Signal.ANALYZE_DRT_PEAKS, settings=settings, **user_data)
+
+    def clear(self, hide: bool):
+        if hide:
+            dpg.hide_item(self._header)
+
+        dpg.set_item_user_data(self.analyze_button, {})
+        dpg.set_item_user_data(self.clear_button, {})
+        dpg.disable_item(self.clear_button)
+        dpg.hide_item(self._summary)
+        dpg.hide_item(self._table)
+        dpg.delete_item(self._table, children_only=True)
+
+    def populate(self, drt: DRTResult, data: DataSet):
+        self.clear(hide=False)
+        dpg.show_item(self._header)
+        user_data: dict = {"drt": drt, "data": data}
+        dpg.set_item_user_data(self.analyze_button, user_data)
+        analysis: Optional[DRTPeakAnalysis] = drt.peak_analysis
+        if analysis is None:
+            return
+
+        dpg.set_item_user_data(self.clear_button, user_data)
+        dpg.enable_item(self.clear_button)
+        num_peaks: int = analysis.get_num_peaks()
+        shape: str = drt_peak_shape_to_label[analysis.settings.shape]
+        dpg.show_item(self._summary)
+        if num_peaks < 1:
+            dpg.set_value(self._summary, f"No peaks found ({shape}).")
+            return
+
+        dpg.set_value(
+            self._summary,
+            f"{num_peaks} peak{'s' if num_peaks != 1 else ''} ({shape})",
+        )
+        dataframe = analysis.to_dataframe()
+        has_part: bool = analysis.imaginary is not None
+        if has_part:
+            dpg.add_table_column(label="Part", width_fixed=True, parent=self._table)
+
+        dpg.add_table_column(label="#", width_fixed=True, parent=self._table)
+        for label in ("tau (s)", "gamma (ohm)", "R_peak (ohm)"):
+            dpg.add_table_column(label=label, parent=self._table)
+
+        for row in dataframe.itertuples(index=False):
+            with dpg.table_row(parent=self._table):
+                if has_part:
+                    dpg.add_text(row[0])
+                    row = row[1:]
+
+                dpg.add_text(str(int(row[0])))
+                dpg.add_text(f"{row[1]:.3e}")
+                dpg.add_text(f"{row[2]:.3e}")
+                dpg.add_text(f"{row[3]:.3e}")
+
+        dpg.set_item_height(
+            self._table,
+            18 + 23 * min(num_peaks, 10),
+        )
+        dpg.show_item(self._table)
 
 
 class DRTResultsCombo(ResultsCombo):
@@ -1509,6 +1774,9 @@ class DRTTab:
 
                 self.statistics_table: StatisticsTable = StatisticsTable()
                 self.scores_table: ScoresTable = ScoresTable()
+                self.peak_analysis_section: PeakAnalysisSection = PeakAnalysisSection(
+                    label_pad=20
+                )
                 self.settings_table: SettingsTable = SettingsTable()
 
     def create_plots(self):
@@ -1855,13 +2123,19 @@ class DRTTab:
         return dpg.is_item_visible(self.visibility_item)
 
     def has_active_input(self) -> bool:
-        return self.settings_menu.has_active_input()
+        return (
+            self.settings_menu.has_active_input()
+            or self.peak_analysis_section.has_active_input()
+        )
 
     def get_settings(self) -> DRTSettings:
         return self.settings_menu.get_settings()
 
     def set_settings(self, settings: DRTSettings):
         self.settings_menu.set_settings(settings)
+
+    def set_peak_settings(self, settings: DRTPeakSettings):
+        self.peak_analysis_section.set_settings(settings)
 
     def toggle_plot_admittance(self, admittance: bool):
         tag: int
@@ -1892,6 +2166,7 @@ class DRTTab:
         self.results_combo.clear()
         self.statistics_table.clear(hide=True)
         self.scores_table.clear(hide=True)
+        self.peak_analysis_section.clear(hide=True)
         self.settings_table.clear(hide=True)
 
         self.drt_plot.update(
@@ -2115,12 +2390,14 @@ class DRTTab:
 
         self.statistics_table.populate(drt)
         self.scores_table.populate(drt)
+        self.peak_analysis_section.populate(drt, data)
         self.settings_table.populate(drt, data)
 
         tau: ndarray
         real_gamma: ndarray
         imaginary_gamma: ndarray
         tau, real_gamma, imaginary_gamma = drt.get_drt_data()
+        self.drt_plot.delete_series(from_index=1)
         self.drt_plot.update(
             index=0,
             tau=tau,
@@ -2156,6 +2433,8 @@ class DRTTab:
                 label="imag.",
                 theme=themes.drt.imaginary_gamma,
             )
+
+        self.plot_peaks(drt)
 
         Z: ComplexImpedances = drt.get_impedances()
         self.nyquist_plot.update(
@@ -2212,6 +2491,52 @@ class DRTTab:
 
         if dpg.get_value(self.adjust_residuals_limits_checkbox):
             self.residuals_plot.queue_limits_adjustment()
+
+    def plot_peaks(self, drt: DRTResult):
+        if drt.peak_analysis is None:
+            return
+
+        peaks: DRTPeaks
+        for peaks, fill_theme, sum_theme, part in (
+            (
+                drt.peak_analysis.real,
+                themes.drt.peak_real,
+                themes.drt.peak_sum_real,
+                "real" if drt.peak_analysis.imaginary is not None else "",
+            ),
+            (
+                drt.peak_analysis.imaginary,
+                themes.drt.peak_imaginary,
+                themes.drt.peak_sum_imaginary,
+                "imag.",
+            ),
+        ):
+            suffix: str = f", {part}" if part != "" else ""
+            if peaks is None or peaks.get_num_peaks() < 1:
+                continue
+
+            tau: ndarray = peaks.get_time_constants(num_per_decade=100)
+            i: int
+            for i in range(0, peaks.get_num_peaks()):
+                self.drt_plot.plot(
+                    tau=tau,
+                    lower=zeros_like(tau),
+                    upper=peaks.get_gammas(peak_indices=[i], num_per_decade=100),
+                    label=f"peaks{suffix}",
+                    show_label=i == 0,
+                    theme=fill_theme,
+                    peak=i,
+                    part=part,
+                )
+
+            self.drt_plot.plot(
+                tau=tau,
+                gamma=peaks.get_gammas(num_per_decade=100),
+                label=f"sum{suffix}",
+                theme=sum_theme,
+                peak=-1,
+                part=part,
+            )
 
     def get_active_output(self) -> Optional[DRTOutput]:
         return self.output_combo.get_value()

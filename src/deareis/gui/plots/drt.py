@@ -146,17 +146,32 @@ class DRT(Plot):
         assert len(args) == 0, args
         
         tau: ndarray = kwargs["tau"]
-        gamma: ndarray = kwargs["gamma"]
+        gamma: Optional[ndarray] = kwargs.get("gamma")
+        lower: Optional[ndarray] = kwargs.get("lower")
+        upper: Optional[ndarray] = kwargs.get("upper")
         
         assert type(tau) is ndarray, tau
-        assert type(gamma) is ndarray, gamma
-        assert tau.shape == gamma.shape, (
-            tau.shape,
-            gamma.shape,
-        )
+        values: List[ndarray]
+        if gamma is not None:
+            assert type(gamma) is ndarray, gamma
+            assert tau.shape == gamma.shape, (
+                tau.shape,
+                gamma.shape,
+            )
+            values = [gamma]
+        else:
+            # Shaded area (e.g., credible intervals or fitted peaks)
+            assert type(lower) is ndarray, lower
+            assert type(upper) is ndarray, upper
+            assert tau.shape == lower.shape == upper.shape, (
+                tau.shape,
+                lower.shape,
+                upper.shape,
+            )
+            values = [lower, upper, [], []]
 
         x = list((1/(2*pi*tau)) if self._frequency else tau)
-        y = list(gamma)
+        y = [list(_) for _ in values]
 
         i: int
         series: Tag
@@ -164,11 +179,14 @@ class DRT(Plot):
             if i != index:
                 continue
             
-            dpg.set_value(series, [x, y])
+            dpg.set_value(series, [x, *y])
             if "label" in kwargs:
                 label: Optional[str] = kwargs.get("label")
                 assert type(label) is str or label is None, label
-                dpg.set_item_label(series, label)
+                if not kwargs.get("show_label", True):
+                    label = ""
+
+                dpg.set_item_label(series, label or "")
             
             self._series[index].update(kwargs)
             dpg.show_item(series)

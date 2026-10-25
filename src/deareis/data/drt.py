@@ -17,7 +17,10 @@
 # The licenses of DearEIS' dependencies and/or sources of portions of code are included in
 # the LICENSES folder.
 
-from dataclasses import dataclass
+from dataclasses import (
+    dataclass,
+    fields,
+)
 from typing import (
     Callable,
     Dict,
@@ -40,6 +43,11 @@ from pyimpspec.analysis.utility import _calculate_pseudo_chisqr
 from pyimpspec import (
     ComplexImpedances,
     ComplexResiduals,
+    DRTPeak,
+    DRTPeakGaussian,
+    DRTPeakHavriliakNegami,
+    DRTPeakZARC,
+    DRTPeaks,
     Frequencies,
     Gamma,
     Gammas,
@@ -55,12 +63,14 @@ from deareis.enums import (
     CrossValidationMethod,
     DRTMethod,
     DRTMode,
+    DRTPeakShape,
     RBFShape,
     RBFType,
     TRNNLSLambdaMethod,
     cross_validation_method_to_label,
     drt_method_to_label,
     drt_mode_to_label,
+    drt_peak_shape_to_value,
     label_to_cross_validation_method,
     label_to_drt_method,
     label_to_drt_mode,
@@ -78,7 +88,8 @@ from deareis.utility import (
 from deareis.data import DataSet
 
 
-VERSION: int = 4
+VERSION: int = 5
+SETTINGS_VERSION: int = 4  # DRTSettings is unchanged since version 4 (also used in config files)
 
 
 def _parse_settings_v4(dictionary: dict) -> dict:
@@ -242,7 +253,7 @@ class DRTSettings:
 
     def to_dict(self) -> dict:
         return {
-            "version": VERSION,
+            "version": SETTINGS_VERSION,
             "method": int(self.method),
             "mode": int(self.mode),
             "lambda_value": self.lambda_value,
@@ -271,7 +282,7 @@ class DRTSettings:
         version: int = dictionary["version"]
         del dictionary["version"]
 
-        assert version <= VERSION, f"{version=} > {VERSION=}"
+        assert version <= SETTINGS_VERSION, f"{version=} > {SETTINGS_VERSION=}"
         parsers: Dict[int, Callable] = {
             1: _parse_settings_v1,
             2: _parse_settings_v2,
@@ -324,8 +335,16 @@ class DRTSettings:
         return Class(**dictionary)
 
 
+def _parse_result_v5(dictionary: dict) -> dict:
+    if "peak_analysis" not in dictionary:
+        dictionary["peak_analysis"] = None
+
+    return dictionary
+
+
 def _parse_result_v4(dictionary: dict) -> dict:
     return dictionary
+
 
 def _parse_result_v3(dictionary: dict) -> dict:
     if "pseudo_chisqr" not in dictionary:
@@ -356,6 +375,225 @@ def _parse_result_v2(dictionary: dict) -> dict:
 
 def _parse_result_v1(dictionary: dict) -> dict:
     return dictionary
+
+
+_PEAK_CLASSES = {
+    DRTPeakShape.SKEW_NORMAL: DRTPeak,
+    DRTPeakShape.GAUSSIAN: DRTPeakGaussian,
+    DRTPeakShape.ZARC: DRTPeakZARC,
+    DRTPeakShape.HAVRILIAK_NEGAMI: DRTPeakHavriliakNegami,
+}
+
+
+@dataclass(frozen=True)
+class DRTPeakSettings:
+    """
+    The settings used when analyzing the peaks of a DRT.
+
+    Parameters
+    ----------
+    shape: DRTPeakShape
+        The function that is fitted to each peak.
+        The area of a Gaussian, ZARC, or Havriliak-Negami peak is the resistance of the corresponding process.
+
+    num_peaks: int
+        The maximum number of peaks to analyze (the tallest ones are kept).
+        Zero means that all detected peaks are analyzed.
+        Ignored if peak_positions is not empty.
+
+    peak_positions: List[float]
+        The approximate time constants (in seconds) of the peaks to analyze.
+
+    disallow_skew: bool
+        If true, then normal distributions are used instead of skew normal distributions.
+        Only applicable to the skew normal shape.
+
+    global_optimization: bool
+        If true, then a global search is performed before the local refinement.
+        This is slower but more robust when peaks overlap.
+    """
+
+    shape: DRTPeakShape
+    num_peaks: int
+    peak_positions: List[float]
+    disallow_skew: bool
+    global_optimization: bool
+
+    def __repr__(self) -> str:
+        return f"DRTPeakSettings ({hex(id(self))})"
+
+    def to_dict(self) -> dict:
+        return {
+            "version": VERSION,
+            "shape": int(self.shape),
+            "num_peaks": self.num_peaks,
+            "peak_positions": [float(_) for _ in self.peak_positions],
+            "disallow_skew": self.disallow_skew,
+            "global_optimization": self.global_optimization,
+        }
+
+    @classmethod
+    def from_dict(Class, dictionary: dict) -> "DRTPeakSettings":
+        assert type(dictionary) is dict
+        assert "version" in dictionary
+        assert dictionary["version"] <= VERSION
+        assert "shape" in dictionary
+        assert "num_peaks" in dictionary
+        assert "peak_positions" in dictionary
+        assert "disallow_skew" in dictionary
+        assert "global_optimization" in dictionary
+
+        return Class(
+            shape=DRTPeakShape(dictionary["shape"]),
+            num_peaks=dictionary["num_peaks"],
+            peak_positions=list(dictionary["peak_positions"]),
+            disallow_skew=dictionary["disallow_skew"],
+            global_optimization=dictionary["global_optimization"],
+        )
+
+
+def _peaks_to_dict(peaks: DRTPeaks) -> dict:
+    return {
+        "suffix": peaks.suffix,
+        "peaks": [
+            {f.name: float(getattr(peak, f.name)) for f in fields(peak)}
+            for peak in peaks.peaks
+        ],
+    }
+
+
+def _peaks_from_dict(
+    dictionary: dict,
+    time_constants: TimeConstants,
+    shape: DRTPeakShape,
+) -> DRTPeaks:
+    Class = _PEAK_CLASSES[shape]
+    return DRTPeaks(
+        time_constants=time_constants,
+        peaks=[Class(**kwargs) for kwargs in dictionary["peaks"]],
+        suffix=dictionary["suffix"],
+        shape=drt_peak_shape_to_value[shape],
+    )
+
+
+@dataclass
+class DRTPeakAnalysis:
+    """
+    The results of analyzing the peaks of a DRT.
+
+    Parameters
+    ----------
+    settings: DRTPeakSettings
+        The settings used to perform the analysis.
+
+    real: DRTPeaks
+        The peaks of the DRT (for BHT: the DRT calculated based on the real part of the impedance data).
+
+    imaginary: Optional[DRTPeaks]
+        The peaks of the DRT calculated based on the imaginary part of the impedance data.
+        Only available when the BHT method has been used.
+    """
+
+    settings: DRTPeakSettings
+    real: DRTPeaks
+    imaginary: Optional[DRTPeaks] = None
+
+    def __repr__(self) -> str:
+        return f"DRTPeakAnalysis ({hex(id(self))})"
+
+    def get_num_peaks(self) -> int:
+        """
+        Get the total number of peaks.
+
+        Returns
+        -------
+        int
+        """
+        n: int = self.real.get_num_peaks()
+        if self.imaginary is not None:
+            n += self.imaginary.get_num_peaks()
+
+        return n
+
+    def to_dict(self) -> dict:
+        return {
+            "version": VERSION,
+            "settings": self.settings.to_dict(),
+            "real": _peaks_to_dict(self.real),
+            "imaginary": (
+                _peaks_to_dict(self.imaginary) if self.imaginary is not None else None
+            ),
+        }
+
+    @classmethod
+    def from_dict(
+        Class,
+        dictionary: dict,
+        time_constants: TimeConstants,
+    ) -> "DRTPeakAnalysis":
+        assert type(dictionary) is dict
+        assert "version" in dictionary
+        assert dictionary["version"] <= VERSION
+        assert "settings" in dictionary
+        assert "real" in dictionary
+        assert "imaginary" in dictionary
+
+        settings: DRTPeakSettings = DRTPeakSettings.from_dict(dictionary["settings"])
+        imaginary: Optional[DRTPeaks] = None
+        if dictionary["imaginary"] is not None:
+            imaginary = _peaks_from_dict(
+                dictionary["imaginary"], time_constants, settings.shape
+            )
+
+        return Class(
+            settings=settings,
+            real=_peaks_from_dict(dictionary["real"], time_constants, settings.shape),
+            imaginary=imaginary,
+        )
+
+    def to_dataframe(self, columns: Optional[List[str]] = None) -> DataFrame:
+        """
+        Get the peaks as a pandas.DataFrame object that can be used to generate, e.g., a Markdown table.
+
+        Parameters
+        ----------
+        columns: Optional[List[str]], optional
+            The labels to use as the column headers for the part (only included when there are imaginary peaks), the peak number, the time constants, the gammas, and the areas.
+
+        Returns
+        -------
+        DataFrame
+        """
+        if columns is None:
+            columns = ["part", "#", "tau (s)", "gamma (ohm)", "R_peak (ohm)"]
+
+        assert isinstance(columns, list)
+        assert len(columns) >= 5
+
+        rows: List[list] = []
+        label: str
+        peaks: Optional[DRTPeaks]
+        for label, peaks in (("real", self.real), ("imag.", self.imaginary)):
+            if peaks is None:
+                continue
+
+            i: int
+            for i, peak in enumerate(peaks.peaks):
+                rows.append(
+                    [
+                        label,
+                        i + 1,
+                        float(peak.get_time_constant()),
+                        float(peak.get_height()),
+                        float(peaks.get_peak_area(i)),
+                    ]
+                )
+
+        if self.imaginary is None:
+            # The part is only relevant when there are two DRTs (BHT).
+            return DataFrame([row[1:] for row in rows], columns=columns[1:5])
+
+        return DataFrame(rows, columns=columns[:5])
 
 
 @dataclass
@@ -418,6 +656,9 @@ class DRTResult:
 
     settings: DRTSettings
         The settings used to perform this analysis.
+
+    peak_analysis: Optional[DRTPeakAnalysis]
+        The results of analyzing the peaks of the DRT (if performed).
     """
 
     uuid: str
@@ -436,6 +677,7 @@ class DRTResult:
     lambda_value: float
     mask: Dict[int, bool]
     settings: DRTSettings
+    peak_analysis: Optional[DRTPeakAnalysis] = None
 
     def __repr__(self) -> str:
         return f"DRTResult ({self.get_label()}, {hex(id(self))})"
@@ -476,6 +718,7 @@ class DRTResult:
             2: _parse_result_v2,
             3: _parse_result_v3,
             4: _parse_result_v4,
+            5: _parse_result_v5,
         }
         assert version in parsers, f"{version=} not in {parsers.keys()=}"
 
@@ -515,6 +758,13 @@ class DRTResult:
         dictionary["lower_bounds"] = array(dictionary["lower_bounds"])
         dictionary["upper_bounds"] = array(dictionary["upper_bounds"])
         dictionary["settings"] = DRTSettings.from_dict(dictionary["settings"])
+        if dictionary.get("peak_analysis") is not None:
+            dictionary["peak_analysis"] = DRTPeakAnalysis.from_dict(
+                dictionary["peak_analysis"],
+                dictionary["time_constants"],
+            )
+        else:
+            dictionary["peak_analysis"] = None
 
         mask: Dict[str, bool] = dictionary["mask"]
         if data is not None:
@@ -611,6 +861,9 @@ class DRTResult:
             "lambda_value": self.lambda_value,
             "mask": self.mask.copy(),
             "settings": self.settings.to_dict(),
+            "peak_analysis": (
+                self.peak_analysis.to_dict() if self.peak_analysis is not None else None
+            ),
         }
 
         if not session:
@@ -739,6 +992,28 @@ class DRTResult:
             }
 
         return DataFrame.from_dict(dictionary)
+
+    def to_peak_analysis_dataframe(
+        self,
+        columns: Optional[List[str]] = None,
+    ) -> DataFrame:
+        """
+        Get the results of the peak analysis as a pandas.DataFrame object.
+        An empty DataFrame is returned if the peaks have not been analyzed.
+
+        Parameters
+        ----------
+        columns: Optional[List[str]], optional
+            The labels to use as the column headers for the part (only included for BHT), the peak number, the time constants, the gammas, and the areas.
+
+        Returns
+        -------
+        DataFrame
+        """
+        if self.peak_analysis is None:
+            return DataFrame()
+
+        return self.peak_analysis.to_dataframe(columns=columns)
 
     def get_peaks(
         self,

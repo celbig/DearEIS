@@ -110,7 +110,9 @@ from .zhit import (
     select_zhit_result,
 )
 from .drt import (
+    analyze_drt_peaks,
     apply_drt_settings,
+    clear_drt_peaks,
     delete_drt_result,
     perform_drt,
     select_drt_result,
@@ -477,6 +479,45 @@ def copy_output(*args, **kwargs):
                         floatfmt=".3g",
                     )
 
+        elif (
+            output == DRTOutput.CSV_PEAKS
+            or output == DRTOutput.JSON_PEAKS
+            or output == DRTOutput.LATEX_PEAKS
+            or output == DRTOutput.MARKDOWN_PEAKS
+        ):
+            peaks_dataframe: DataFrame = drt.to_peak_analysis_dataframe(
+                columns=None
+                if output != DRTOutput.LATEX_PEAKS
+                else [
+                    "Part",
+                    r"\#",
+                    r"$\tau$ (s)",
+                    r"$\gamma$ ($\Omega$)",
+                    r"$R_{\rm peak}$ ($\Omega$)",
+                ],
+            )
+            if not peaks_dataframe.empty:
+                if output == DRTOutput.CSV_PEAKS:
+                    clipboard_content = peaks_dataframe.to_csv(index=False)
+                elif output == DRTOutput.JSON_PEAKS:
+                    clipboard_content = peaks_dataframe.to_json()
+                elif output == DRTOutput.LATEX_PEAKS:
+                    clipboard_content = (
+                        peaks_dataframe.style.format(
+                            {
+                                column: "{:.3g}"
+                                for column in peaks_dataframe.columns[-3:]
+                            }
+                        )
+                        .hide(axis="index")
+                        .to_latex(hrules=True)
+                    )
+                elif output == DRTOutput.MARKDOWN_PEAKS:
+                    clipboard_content = peaks_dataframe.to_markdown(
+                        index=False,
+                        floatfmt=".3g",
+                    )
+
     else:
         raise Exception(f"Unsupported output type: {type(output)}")
 
@@ -747,6 +788,22 @@ def copy_plot_data(*args, **kwargs):
 
     elif type(plot) is DRT:
         for series in plot.get_series():
+            if "peak" in series:
+                # Peaks fitted to the DRT: one column per peak and one for their sum.
+                part: str = f", {series['part']}" if series.get("part") else ""
+                dictionary[
+                    ("f (Hz)" if frequency else "tau (s)")
+                    + f" - Peaks{part}"
+                ] = (1 / (2 * pi * series["tau"])) if frequency else series["tau"]
+                if series["peak"] >= 0:
+                    dictionary[
+                        f"gamma (ohm) - Peak {series['peak'] + 1}{part}"
+                    ] = series["upper"]
+                else:
+                    dictionary[f"gamma (ohm) - Sum of peaks{part}"] = series["gamma"]
+
+                continue
+
             label = series.get("label")
             if label == "gamma":
                 label = ""
@@ -1058,6 +1115,8 @@ def initialize_program(args: Namespace):
     signals.register(Signal.SELECT_DRT_RESULT, select_drt_result)
     signals.register(Signal.DELETE_DRT_RESULT, delete_drt_result)
     signals.register(Signal.APPLY_DRT_SETTINGS, apply_drt_settings)
+    signals.register(Signal.ANALYZE_DRT_PEAKS, analyze_drt_peaks)
+    signals.register(Signal.CLEAR_DRT_PEAKS, clear_drt_peaks)
 
     # Signals for the fitting tab
     signals.register(Signal.PERFORM_FIT, perform_fit)

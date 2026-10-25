@@ -376,6 +376,22 @@ drt: SimpleNamespace = SimpleNamespace(
             [238.0, 119.0, 51.0, 190.0],
             dpg.mvPlotMarker_Circle,
         ),
+        "peak_real": create_plot_series_theme(
+            [51.0, 187.0, 238.0, 70.0],
+            dpg.mvPlotMarker_Circle,
+        ),
+        "peak_imaginary": create_plot_series_theme(
+            [238.0, 119.0, 51.0, 70.0],
+            dpg.mvPlotMarker_Circle,
+        ),
+        "peak_sum_real": create_plot_series_theme(
+            [0.0, 119.0, 187.0, 255.0],
+            dpg.mvPlotMarker_Circle,
+        ),
+        "peak_sum_imaginary": create_plot_series_theme(
+            [204.0, 51.0, 17.0, 255.0],
+            dpg.mvPlotMarker_Circle,
+        ),
     }
 )
 

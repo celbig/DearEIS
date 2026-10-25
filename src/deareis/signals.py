@@ -46,6 +46,7 @@ GUI_CONSTRUCTION_LOCK: RLock = RLock()
 
 
 class Signal(IntEnum):
+    ANALYZE_DRT_PEAKS = auto()
     APPLY_DATA_SET_MASK = auto()
     APPLY_DRT_SETTINGS = auto()
     APPLY_FIT_SETTINGS = auto()
@@ -56,6 +57,7 @@ class Signal(IntEnum):
     BATCH_PERFORM_ANALYSIS = auto()
     BLOCK_KEYBINDINGS = auto()
     CHECK_UPDATES = auto()
+    CLEAR_DRT_PEAKS = auto()
     CLEAR_RECENT_PROJECTS = auto()
     CLOSE_PROJECT = auto()
     COPY_OUTPUT = auto()

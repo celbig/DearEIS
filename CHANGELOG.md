@@ -11,8 +11,16 @@
   - The names of the elements are used as labels, and the values and fixed/free status of the parameters are retained.
   - A `load-circuit-file` action, which can be assigned a keybinding or used via the command palette, was also added.
 - Added the `parse_mdl` function to the API.
+- Added peak analysis to the DRT tab (requires a version of pyimpspec that provides `pyimpspec.analyze_drt_peaks`).
+  - Peaks can be fitted using skew normal, Gaussian, ZARC, or Havriliak-Negami functions. The area of a Gaussian, ZARC, or Havriliak-Negami peak is the resistance of the corresponding relaxation process.
+  - The number of peaks and/or their approximate positions can be specified, and an optional global optimization step can be used.
+  - The peaks are plotted alongside the DRT, listed in a table (tau, gamma, and the area of each peak), and saved in projects. For BHT, the DRTs based on the real and imaginary parts of the impedance data are analyzed separately.
+  - Added the `Peaks` outputs (CSV, JSON, LaTeX, and Markdown) for copying the table of peaks to the clipboard.
+  - Added the `analyze_drt_peaks` function and the `DRTPeakSettings`, `DRTPeakAnalysis`, and `DRTPeakShape` classes to the API.
+  - The `DRTResult` class has a new `peak_analysis` attribute. Projects created with older versions of DearEIS can still be loaded.
 - Fixed a bug that could cause exception messages (e.g., "Item not found") in the terminal when a plot was deleted (e.g., a window with a plot was closed) while the limits of the plot were being adjusted.
 - Fixed a bug that caused an exception when adjusting the limits of an empty plot of residuals.
+- Fixed a bug that caused an exception when toggling the frequency axis in the DRT plot while a shaded series (e.g., the credible intervals of TR-RBF) was present.
 
 
 # 5.1.3 (2026/04/28)

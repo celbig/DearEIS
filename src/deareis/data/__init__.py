@@ -39,6 +39,8 @@ from .plotting import (
     PlotSeries,
 )
 from .drt import (
+    DRTPeakAnalysis,
+    DRTPeakSettings,
     DRTResult,
     DRTSettings,
 )

@@ -22,6 +22,7 @@ from typing import (
 )
 import deareis.api.drt as api
 from deareis.data import (
+    DRTPeakSettings,
     DRTResult,
     DRTSettings,
     DataSet,
@@ -88,6 +89,9 @@ def apply_drt_settings(*args, **kwargs):
     if settings is None:
         return
     project_tab.set_drt_settings(settings)
+    peak_settings: Optional[DRTPeakSettings] = kwargs.get("peak_settings")
+    if peak_settings is not None:
+        project_tab.set_drt_peak_settings(peak_settings)
 
 
 def perform_drt(*args, **kwargs):
@@ -119,3 +123,36 @@ def perform_drt(*args, **kwargs):
     signals.emit(Signal.HIDE_BUSY_MESSAGE)
     if batch is False:
         signals.emit(Signal.CREATE_PROJECT_SNAPSHOT)
+
+
+def analyze_drt_peaks(*args, **kwargs):
+    project: Optional[Project] = STATE.get_active_project()
+    project_tab: Optional[ProjectTab] = STATE.get_active_project_tab()
+    if project is None or project_tab is None:
+        return
+    drt: Optional[DRTResult] = kwargs.get("drt")
+    data: Optional[DataSet] = kwargs.get("data")
+    settings: Optional[DRTPeakSettings] = kwargs.get("settings")
+    if drt is None or data is None or settings is None:
+        return
+    signals.emit(Signal.SHOW_BUSY_MESSAGE, message="Analyzing peaks")
+    try:
+        drt.peak_analysis = api.analyze_drt_peaks(drt=drt, settings=settings)
+        project_tab.select_drt_result(drt, data)
+    finally:
+        signals.emit(Signal.HIDE_BUSY_MESSAGE)
+    signals.emit(Signal.CREATE_PROJECT_SNAPSHOT)
+
+
+def clear_drt_peaks(*args, **kwargs):
+    project: Optional[Project] = STATE.get_active_project()
+    project_tab: Optional[ProjectTab] = STATE.get_active_project_tab()
+    if project is None or project_tab is None:
+        return
+    drt: Optional[DRTResult] = kwargs.get("drt")
+    data: Optional[DataSet] = kwargs.get("data")
+    if drt is None or data is None or drt.peak_analysis is None:
+        return
+    drt.peak_analysis = None
+    project_tab.select_drt_result(drt, data)
+    signals.emit(Signal.CREATE_PROJECT_SNAPSHOT)
