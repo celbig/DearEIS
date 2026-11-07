@@ -1165,7 +1165,13 @@ This affects how smooth the lines will look when plotting the impedance response
         assert type(sender) is int
         assert type(theme) is int
         color: List[float] = dpg.get_value(sender)
-        themes.update_plot_series_theme_color(theme, color)
+        if theme in themes.nyquist.subcircuits:
+            themes.update_subcircuit_theme_colors(
+                themes.nyquist.subcircuits.index(theme),
+                color,
+            )
+        else:
+            themes.update_plot_series_theme_color(theme, color)
         STATE.config.colors[self.get_nyquist_key(theme)] = color
 
     def update_nyquist_marker(self, sender: int, label: str, theme: int):

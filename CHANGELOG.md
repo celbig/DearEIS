@@ -1,11 +1,16 @@
 # Unreleased
 
 - Added the `Subcircuits` checkbox and offset selection to the Nyquist plot in the `Fitting` tab, which show the contribution of each component that is connected in series in the fitted circuit (e.g., `R`, `(RC)`, and `(RW)` for `R(RC)(RW)`).
-  - The state of the checkbox and the chosen offset (`No offset` or `Series R offset`) are stored in the configuration file.
+  - The state of the checkbox and the chosen offset are stored in the configuration file.
   - The contributions are included when copying the data of the plot as CSV and are hidden when plotting admittance.
   - The colors and markers of the contributions can be changed in the `Appearance` settings.
 - Added the `subcircuits` and `subcircuit_offset` parameters to `deareis.mpl.plot` for including the contributions in Nyquist plots of circuit fits.
 - Added the `deareis.mpl.plot_subcircuits` function and the `subcircuits` and `subcircuit_offset` parameters of `deareis.mpl.plot_fit` (both from pyimpspec), which now also work with `deareis.FitResult` instances.
+- Added the `Cumulative R (DC)` and `Peak-aligned` offsets for the contributions in the Nyquist plot in the `Fitting` tab, which place each arc where it appears in the data by also taking into account the resistances of the other components. `Peak-aligned` is the new default.
+- Added a `Subcircuits` checkbox to the `Real & imag.` plot in the `Fitting` tab, which shows the exact imaginary parts and the cumulative real parts of the contributions as a function of frequency.
+- The elements in the table of fitted parameters and in the circuit preview of the `Fitting` tab are colored like the contributions that they belong to when the contributions are shown. Each component keeps the same color regardless of the offset.
+- The `subcircuit_offset` parameter of `deareis.mpl.plot` also accepts `"cumulative_dc"` and `"peak"`.
+- Fixed the columns of the fit markers and the fit line overwriting each other when copying the data of the `Real & imag.` plots (e.g., in the `Fitting` and `DRT analysis` tabs) as CSV. The columns are now labeled `Fit (scatter)` and `Fit (line)` like in the Nyquist plots.
 - Updated the minimum version of pyimpspec to 5.3.
 - Added support for importing equivalent circuits from ZView circuit models (`.mdl` files) via the new **Load** button next to the circuit input in the **Fitting** and **Simulation** tabs.
   - The names of the elements are used as labels, and the values and fixed/free status of the parameters are retained.

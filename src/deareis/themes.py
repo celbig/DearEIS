@@ -987,84 +987,95 @@ _preview_node: Tag = dpg.generate_uuid()
 _link_color = (255, 255, 255, 200)
 _pin_color = (255, 255, 255, 0)
 
-with dpg.theme(tag=_preview_node):
-    with dpg.theme_component(dpg.mvAll):
-        dpg.add_theme_color(
-            dpg.mvNodeCol_NodeBackground,
-            _default_background_color,
-            category=dpg.mvThemeCat_Nodes,
-        )
-        dpg.add_theme_color(
-            dpg.mvNodeCol_NodeBackgroundHovered,
-            _default_background_color,
-            category=dpg.mvThemeCat_Nodes,
-        )
-        dpg.add_theme_color(
-            dpg.mvNodeCol_NodeBackgroundSelected,
-            _default_background_color,
-            category=dpg.mvThemeCat_Nodes,
-        )
-        dpg.add_theme_color(
-            dpg.mvNodeCol_TitleBar,
-            _default_title_bar_color,
-            category=dpg.mvThemeCat_Nodes,
-        )
-        dpg.add_theme_color(
-            dpg.mvNodeCol_TitleBarHovered,
-            _default_title_bar_color,
-            category=dpg.mvThemeCat_Nodes,
-        )
-        dpg.add_theme_color(
-            dpg.mvNodeCol_TitleBarSelected,
-            _default_title_bar_color,
-            category=dpg.mvThemeCat_Nodes,
-        )
-        dpg.add_theme_color(
-            dpg.mvNodeCol_NodeOutline,
-            _default_outline_color,
-            category=dpg.mvThemeCat_Nodes,
-        )
-        dpg.add_theme_color(
-            dpg.mvThemeCol_Text,
-            (
-                255.0,
-                255.0,
-                255.0,
-                255.0,
-            ),
-            category=dpg.mvThemeCat_Core,
-        )
-        dpg.add_theme_color(
-            dpg.mvNodeCol_Link,
-            _link_color,
-            category=dpg.mvThemeCat_Nodes,
-        )
-        dpg.add_theme_color(
-            dpg.mvNodeCol_LinkHovered,
-            _link_color,
-            category=dpg.mvThemeCat_Nodes,
-        )
-        dpg.add_theme_color(
-            dpg.mvNodeCol_LinkSelected,
-            _link_color,
-            category=dpg.mvThemeCat_Nodes,
-        )
-        dpg.add_theme_color(
-            dpg.mvNodeCol_Pin,
-            _pin_color,
-            category=dpg.mvThemeCat_Nodes,
-        )
-        dpg.add_theme_color(
-            dpg.mvNodeCol_PinHovered,
-            _pin_color,
-            category=dpg.mvThemeCat_Nodes,
-        )
-        dpg.add_theme_style(
-            dpg.mvNodeStyleVar_NodePadding,
-            x=8,
-            y=4,
-            category=dpg.mvThemeCat_Nodes,
-        )
+
+def _create_preview_node_theme(title_bar_color, tag: int = -1) -> int:
+    if tag < 0:
+        tag = dpg.generate_uuid()
+
+    with dpg.theme(tag=tag):
+        with dpg.theme_component(dpg.mvAll):
+            dpg.add_theme_color(
+                dpg.mvNodeCol_NodeBackground,
+                _default_background_color,
+                category=dpg.mvThemeCat_Nodes,
+            )
+            dpg.add_theme_color(
+                dpg.mvNodeCol_NodeBackgroundHovered,
+                _default_background_color,
+                category=dpg.mvThemeCat_Nodes,
+            )
+            dpg.add_theme_color(
+                dpg.mvNodeCol_NodeBackgroundSelected,
+                _default_background_color,
+                category=dpg.mvThemeCat_Nodes,
+            )
+            dpg.add_theme_color(
+                dpg.mvNodeCol_TitleBar,
+                title_bar_color,
+                category=dpg.mvThemeCat_Nodes,
+            )
+            dpg.add_theme_color(
+                dpg.mvNodeCol_TitleBarHovered,
+                title_bar_color,
+                category=dpg.mvThemeCat_Nodes,
+            )
+            dpg.add_theme_color(
+                dpg.mvNodeCol_TitleBarSelected,
+                title_bar_color,
+                category=dpg.mvThemeCat_Nodes,
+            )
+            dpg.add_theme_color(
+                dpg.mvNodeCol_NodeOutline,
+                _default_outline_color,
+                category=dpg.mvThemeCat_Nodes,
+            )
+            dpg.add_theme_color(
+                dpg.mvThemeCol_Text,
+                (
+                    255.0,
+                    255.0,
+                    255.0,
+                    255.0,
+                ),
+                category=dpg.mvThemeCat_Core,
+            )
+            dpg.add_theme_color(
+                dpg.mvNodeCol_Link,
+                _link_color,
+                category=dpg.mvThemeCat_Nodes,
+            )
+            dpg.add_theme_color(
+                dpg.mvNodeCol_LinkHovered,
+                _link_color,
+                category=dpg.mvThemeCat_Nodes,
+            )
+            dpg.add_theme_color(
+                dpg.mvNodeCol_LinkSelected,
+                _link_color,
+                category=dpg.mvThemeCat_Nodes,
+            )
+            dpg.add_theme_color(
+                dpg.mvNodeCol_Pin,
+                _pin_color,
+                category=dpg.mvThemeCat_Nodes,
+            )
+            dpg.add_theme_color(
+                dpg.mvNodeCol_PinHovered,
+                _pin_color,
+                category=dpg.mvThemeCat_Nodes,
+            )
+            dpg.add_theme_style(
+                dpg.mvNodeStyleVar_NodePadding,
+                x=8,
+                y=4,
+                category=dpg.mvThemeCat_Nodes,
+            )
+
+    return tag
+
+
+_create_preview_node_theme(_default_title_bar_color, tag=_preview_node)
+
 
 circuit_editor: SimpleNamespace = SimpleNamespace(
     **{
@@ -1075,6 +1086,67 @@ circuit_editor: SimpleNamespace = SimpleNamespace(
         "preview_node": _preview_node,
     }
 )
+
+
+def _opaque(color: List[float]) -> List[float]:
+    return list(color[:3]) + [255.0]
+
+
+def _create_text_theme(color: List[float]) -> int:
+    tag: int = dpg.generate_uuid()
+    with dpg.theme(tag=tag):
+        with dpg.theme_component(dpg.mvAll):
+            dpg.add_theme_color(
+                dpg.mvThemeCol_Text,
+                _opaque(color),
+                category=dpg.mvThemeCat_Core,
+            )
+
+    return tag
+
+
+# The themes used to indicate which elements of a circuit belong to which contribution (see nyquist.subcircuits)
+subcircuits: SimpleNamespace = SimpleNamespace(
+    **{
+        "texts": [_create_text_theme(color) for color in NYQUIST_SUBCIRCUIT_COLORS],
+        "nodes": [
+            _create_preview_node_theme(_opaque(color))
+            for color in NYQUIST_SUBCIRCUIT_COLORS
+        ],
+    }
+)
+
+
+def update_subcircuit_theme_colors(index: int, color: List[float]):
+    """
+    Update the color of the plot series, the text, and the circuit preview node themes of a subcircuit.
+    """
+    assert type(index) is int and 0 <= index < len(nyquist.subcircuits), index
+    update_plot_series_theme_color(nyquist.subcircuits[index], list(color))
+
+    opaque: List[float] = _opaque(color)
+    item: int
+    i: int
+    for item in dpg.get_item_children(subcircuits.texts[index], slot=1):
+        for i in dpg.get_item_children(item, slot=1):
+            if dpg.get_item_type(i).endswith("::mvThemeColor"):
+                dpg.set_value(i, opaque)
+
+    targets: Tuple[int, ...] = (
+        dpg.mvNodeCol_TitleBar,
+        dpg.mvNodeCol_TitleBarHovered,
+        dpg.mvNodeCol_TitleBarSelected,
+    )
+    for item in dpg.get_item_children(subcircuits.nodes[index], slot=1):
+        for i in dpg.get_item_children(item, slot=1):
+            if not dpg.get_item_type(i).endswith("::mvThemeColor"):
+                continue
+            config: dict = dpg.get_item_configuration(i)
+            if (
+                config.get("category") == dpg.mvThemeCat_Nodes
+                and config.get("target") in targets
+            ):
+                dpg.set_value(i, opaque)
 
 
 _limited_parameter: Tag = dpg.generate_uuid()

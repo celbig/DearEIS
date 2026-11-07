@@ -32,8 +32,22 @@ Since the impedances of components in series add up, these contributions sum up 
 The dropdown menu next to the checkbox chooses where the contributions are placed on the real axis:
 
 - **No offset**: each contribution starts from the origin and the values are exact. Resistors in series are shown as single points.
-- **Series R offset**: the sum of the resistors in series (e.g., the ohmic resistance) is added to the real part of the other contributions and the resistors are not shown separately.
+- **Series R offset**: the sum of the resistors in series (e.g., the ohmic resistance) is added to the real part of the other contributions.
+- **Cumulative R (DC)**: the sum of the resistors in series and the zero-frequency resistances of the faster components (i.e., those with higher characteristic frequencies) is added to the real part of each contribution. Each arc thus starts where it would start if the time constants of the processes were well separated. The real part at the lowest frequency is used for components without a finite zero-frequency resistance (e.g., a semi-infinite Warburg element).
+- **Peak-aligned** (default): the real parts of all of the other components at the characteristic frequency of a contribution are added to the real part of that contribution. The apex of each arc is thus placed at the same real value as the fit at that frequency, even when the arcs overlap.
 
+The characteristic frequency of a component is the frequency where the magnitude of the imaginary part of its impedance is the greatest (e.g., the apex of an arc).
+The offsets only shift the real parts, which means that the shapes of the contributions are preserved but they no longer sum up to the fit.
+The resistors in series are not shown separately when using an offset.
+When arcs overlap, the height of a peak in the data may also be greater than that of the corresponding arc since the other components also contribute to the imaginary part.
+
+The **Subcircuits** checkbox below the plot in the **Real & imag.** tab shows the contributions as a function of frequency.
+The imaginary parts are exact and sum up to the imaginary part of the fit, so the peak of each process can be located without any offset.
+The real parts are cumulative: the components are sorted from the fastest to the slowest and each curve includes the resistors in series and the real parts of the faster components.
+Each step thus shows the resistance of a process and the last curve is the real part of the fit.
+
+When the contributions are shown, the names of the elements in the table of fitted parameters and the title bars of the nodes in the circuit preview are colored like the contributions that the elements belong to.
+Each component keeps the same color regardless of the offset.
 The contributions are not shown when plotting admittance because components in series do not add up as admittances.
 The colors and markers of the contributions can be changed in the **Appearance** settings.
 

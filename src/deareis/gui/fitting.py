@@ -34,6 +34,7 @@ from numpy import (
     isnan,
     log10 as log,
     ndarray,
+    zeros,
 )
 from pyimpspec import (
     Circuit,
@@ -83,6 +84,7 @@ from deareis.utility import (
     calculate_window_position_dimensions,
     find_parent_containers,
     format_number,
+    get_subcircuit_color_indices,
     pad_tab_labels,
     process_cdc,
     render_math,
@@ -103,6 +105,8 @@ from deareis.typing.helpers import Tag
 SUBCIRCUIT_OFFSETS: Dict[str, str] = {
     "No offset": "none",
     "Series R offset": "series_resistance",
+    "Cumulative R (DC)": "cumulative_dc",
+    "Peak-aligned": "peak",
 }
 MATH_WEIGHT_WIDTH: int = 300
 MATH_WEIGHT_HEIGHT: int = 40
@@ -375,6 +379,7 @@ class ParametersTable:
             leaf=True,
             tag=self._header,
         ):
+            self._element_widgets: Dict[Element, List[Tag]] = {}
             self._table: Tag = dpg.generate_uuid()
             with dpg.table(
                 borders_outerV=True,
@@ -427,6 +432,22 @@ class ParametersTable:
             dpg.hide_item(self._header)
 
         dpg.delete_item(self._table, children_only=True, slot=1)
+        self._element_widgets.clear()
+
+    def set_subcircuit_colors(self, indices: Dict[Element, int]):
+        # Color the names of the elements based on the contributions that they belong to
+        text_themes: List[int] = themes.subcircuits.texts
+        element: Element
+        widgets: List[Tag]
+        for element, widgets in self._element_widgets.items():
+            theme: int = (
+                text_themes[indices[element] % len(text_themes)]
+                if element in indices
+                else 0  # Unbinds the theme
+            )
+            widget: Tag
+            for widget in widgets:
+                dpg.bind_item_theme(widget, theme)
 
     def limited_parameter(
         self,
@@ -468,6 +489,7 @@ class ParametersTable:
                 dpg.add_text("".ljust(column_pads[3]))
             return
 
+        elements: List[Element] = []
         element_names: List[str] = []
         element_tooltips: List[str] = []
 
@@ -542,6 +564,7 @@ class ParametersTable:
             parameter: FittedParameter
             for parameter_label in sorted(parameters):
                 parameter = parameters[parameter_label]
+                elements.append(element)
                 element_names.append(element_name)
                 element_tooltips.append(element_tooltip)
                 parameter_labels.append(
@@ -607,6 +630,7 @@ class ParametersTable:
         num_rows: int = 0
 
         for (
+            element,
             element_name,
             element_tooltip,
             parameter_label,
@@ -618,6 +642,7 @@ class ParametersTable:
             error_tooltip,
             error_theme,
         ) in zip(
+            elements,
             element_names,
             element_tooltips,
             parameter_labels,
@@ -630,8 +655,9 @@ class ParametersTable:
             error_themes,
         ):
             with dpg.table_row(parent=self._table):
-                dpg.add_text(element_name.ljust(column_pads[0]))
+                element_widget: Tag = dpg.add_text(element_name.ljust(column_pads[0]))
                 attach_tooltip(element_tooltip)
+                self._element_widgets.setdefault(element, []).append(element_widget)
 
                 dpg.add_text(parameter_label.ljust(column_pads[1]))
                 attach_tooltip(parameter_tooltip)
@@ -1251,7 +1277,7 @@ class FittingTab:
                         if offset == self.state.config.fit_subcircuit_offset
                     ),
                     callback=lambda s, a, u: self.select_subcircuit_offset(a),
-                    width=140,
+                    width=170,
                     tag=self.nyquist_subcircuit_offset_combo,
                 )
                 attach_tooltip(tooltips.fitting.subcircuit_offset)
@@ -1416,6 +1442,15 @@ class FittingTab:
                 )
                 attach_tooltip(tooltips.general.plot_admittance)
 
+                self.impedance_subcircuits_checkbox: Tag = dpg.generate_uuid()
+                dpg.add_checkbox(
+                    label="Subcircuits",
+                    default_value=self.state.config.fit_impedance_subcircuits,
+                    callback=lambda s, a, u: self.toggle_impedance_subcircuits(a),
+                    tag=self.impedance_subcircuits_checkbox,
+                )
+                attach_tooltip(tooltips.fitting.impedance_subcircuits)
+
     def create_residuals_plot(self):
         with dpg.tab(label="Residuals"):
             self.residuals_plot: Residuals = Residuals(width=-1, height=-24)
@@ -1468,31 +1503,47 @@ class FittingTab:
         self.state.config.fit_subcircuit_offset = SUBCIRCUIT_OFFSETS[label]
         self.update_subcircuits()
 
+    def toggle_impedance_subcircuits(self, show: bool):
+        self.state.config.fit_impedance_subcircuits = show
+        self.update_impedance_subcircuits()
+
+    def get_current_fit(self) -> Optional[FitResult]:
+        user_data: Optional[dict] = dpg.get_item_user_data(self.delete_button)
+        fit: Optional[FitResult] = user_data.get("fit") if user_data else None
+        if fit is None or not isinstance(fit.circuit, Circuit):
+            return None
+
+        return fit
+
+    def get_subcircuit_theme(self, labels: List[str], label: str) -> int:
+        # Each component keeps the same color regardless of the offset and the plot
+        # (the index is based on the order of the components in the circuit)
+        themes_: List[int] = themes.nyquist.subcircuits
+        return themes_[labels.index(label) % len(themes_)]
+
     def update_subcircuits(self, adjust_limits: bool = True):
         # Series 0, 1, and 2 are the data, the fit markers, and the fit line
         while len(self.nyquist_plot.get_series()) > 3:
             self.nyquist_plot.delete_series(3)
 
-        user_data: Optional[dict] = dpg.get_item_user_data(self.delete_button)
-        fit: Optional[FitResult] = user_data.get("fit") if user_data else None
-        if (
-            not self.state.config.fit_subcircuits
-            or fit is None
-            or not isinstance(fit.circuit, Circuit)
-        ):
+        fit: Optional[FitResult] = self.get_current_fit()
+        if not self.state.config.fit_subcircuits or fit is None:
+            self.update_subcircuit_colors()
             return
 
+        freq: Frequencies = fit.get_frequencies(
+            num_per_decade=self.state.config.num_per_decade_in_simulated_lines
+        )
+        labels: List[str] = [
+            label for label, _ in fit.circuit.get_subcircuit_impedances(freq)
+        ]
         components: List[Tuple[str, ndarray]] = fit.circuit.get_subcircuit_impedances(
-            fit.get_frequencies(
-                num_per_decade=self.state.config.num_per_decade_in_simulated_lines
-            ),
+            freq,
             offset=self.state.config.fit_subcircuit_offset,
         )
-        themes_: List[int] = themes.nyquist.subcircuits
-        i: int
         label: str
         Z: ndarray
-        for i, (label, Z) in enumerate(components):
+        for label, Z in components:
             # A component that does not depend on the frequency (e.g., a resistor) is a single point
             is_point: bool = bool(allclose(Z, Z[0]))
             self.nyquist_plot.plot(
@@ -1500,11 +1551,77 @@ class FittingTab:
                 label=label,
                 line=not is_point,
                 subcircuit=True,
-                theme=themes_[i % len(themes_)],
+                theme=self.get_subcircuit_theme(labels, label),
             )
 
+        self.update_subcircuit_colors()
         if adjust_limits and dpg.get_value(self.adjust_nyquist_limits_checkbox):
             self.nyquist_plot.queue_limits_adjustment()
+
+    def update_impedance_subcircuits(self, adjust_limits: bool = True):
+        # Series 0, 1, and 2 are the data, the fit markers, and the fit line
+        while len(self.impedance_plot.get_series()) > 3:
+            self.impedance_plot.delete_series(3)
+
+        fit: Optional[FitResult] = self.get_current_fit()
+        if not self.state.config.fit_impedance_subcircuits or fit is None:
+            self.update_subcircuit_colors()
+            return
+
+        freq: Frequencies = fit.get_frequencies(
+            num_per_decade=self.state.config.num_per_decade_in_simulated_lines
+        )
+        labels: List[str] = [
+            label for label, _ in fit.circuit.get_subcircuit_impedances(freq)
+        ]
+        # The imaginary parts are exact while the real parts are cumulative (from the fastest to the slowest
+        # component) so that each step shows the resistance of a process and the last one is the real part of the fit
+        cumulative_real: ndarray = zeros(freq.shape, dtype=float)
+        label: str
+        Z: ndarray
+        for label, Z in fit.circuit.get_subcircuit_impedances(freq, sort=True):
+            cumulative_real = cumulative_real + Z.real
+            if allclose(Z, Z[0]):
+                # A component that does not depend on the frequency (e.g., a resistor) only shifts the real part
+                continue
+
+            theme: int = self.get_subcircuit_theme(labels, label)
+            self.impedance_plot.plot(
+                frequencies=freq,
+                impedances=cumulative_real + 1j * Z.imag,
+                labels=(
+                    f"Re({label}) cumul.",
+                    f"Im({label})",
+                ),
+                line=True,
+                subcircuit=True,
+                component=label,
+                themes=(theme, theme),
+            )
+
+        self.update_subcircuit_colors()
+        if adjust_limits and dpg.get_value(self.adjust_impedance_limits_checkbox):
+            self.impedance_plot.queue_limits_adjustment()
+
+    def update_subcircuit_colors(self):
+        # Indicate which elements belong to which contribution in the table of parameters and the circuit preview
+        fit: Optional[FitResult] = self.get_current_fit()
+        offset: Optional[str] = None
+        if fit is not None and not self.nyquist_plot.admittance:
+            if self.state.config.fit_subcircuits:
+                offset = self.state.config.fit_subcircuit_offset
+            elif self.state.config.fit_impedance_subcircuits:
+                offset = "none"
+
+        if offset is None or fit is None:
+            self.parameters_table.set_subcircuit_colors({})
+            self.circuit_preview.set_subcircuit_colors(None)
+            return
+
+        self.parameters_table.set_subcircuit_colors(
+            get_subcircuit_color_indices(fit.circuit, offset=offset)
+        )
+        self.circuit_preview.set_subcircuit_colors(offset)
 
     def toggle_plot_admittance(self, admittance: bool):
         tag: int
@@ -1518,12 +1635,14 @@ class FittingTab:
         for tag in (
             self.nyquist_subcircuits_checkbox,
             self.nyquist_subcircuit_offset_combo,
+            self.impedance_subcircuits_checkbox,
         ):
             (dpg.disable_item if admittance else dpg.enable_item)(tag)
 
         self.nyquist_plot.set_admittance(admittance)
         self.bode_plot.set_admittance(admittance)
         self.impedance_plot.set_admittance(admittance)
+        self.update_subcircuit_colors()
         editor_kwargs: dict = dpg.get_item_user_data(self.settings_menu.editor_button)
         editor_kwargs["admittance"] = admittance
 
@@ -1555,6 +1674,8 @@ class FittingTab:
         self.circuit_preview.clear()
         while len(self.nyquist_plot.get_series()) > 3:
             self.nyquist_plot.delete_series(3)
+        while len(self.impedance_plot.get_series()) > 3:
+            self.impedance_plot.delete_series(3)
         self.nyquist_plot.clear(delete=False)
         self.bode_plot.clear(delete=False)
         self.impedance_plot.clear(delete=False)
@@ -1768,6 +1889,7 @@ class FittingTab:
         )
 
         self.update_subcircuits(adjust_limits=False)
+        self.update_impedance_subcircuits(adjust_limits=False)
 
         if dpg.get_value(self.adjust_nyquist_limits_checkbox):
             self.nyquist_plot.queue_limits_adjustment()
