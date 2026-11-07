@@ -4,18 +4,18 @@ Distribution of relaxation times analysis
 =========================================
 
 .. automodule:: deareis
-   :members: calculate_drt
+   :members: calculate_drt, analyze_drt_peaks
 
 
 Classes
 -------
 .. automodule:: deareis
-   :members: DRTResult, DRTSettings
+   :members: DRTResult, DRTSettings, DRTPeakSettings, DRTPeakAnalysis
 
 Enums
 -----
 .. automodule:: deareis
-   :members: DRTMethod, DRTMode, RBFShape, RBFType
+   :members: DRTMethod, DRTMode, DRTPeakShape, RBFShape, RBFType
 
 .. raw:: latex
 

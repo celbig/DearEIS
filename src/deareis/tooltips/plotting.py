@@ -37,6 +37,11 @@ Whether or not this Z-HIT analysis result is included in the plot.
         "drt_checkbox": """
 Whether or not this DRT analysis result is included in the plot.
     """.strip(),
+        "drt_peak_series": """
+Whether or not this result of the peak analysis (the areas of the individual peaks, the sum of the peaks, or the difference between the DRT and the sum of the peaks) is included in the plot. Only applicable to plots of distributions of relaxation times.
+
+The colors of the areas of the peaks can be changed in the DRT analysis tab.
+    """.strip(),
         "fit_checkbox": """
 Whether or not this fit result is included in the plot.
     """.strip(),

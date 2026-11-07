@@ -46,6 +46,7 @@ GUI_CONSTRUCTION_LOCK: RLock = RLock()
 
 
 class Signal(IntEnum):
+    ANALYZE_DRT_PEAKS = auto()
     APPLY_DATA_SET_MASK = auto()
     APPLY_DRT_SETTINGS = auto()
     APPLY_FIT_SETTINGS = auto()
@@ -56,6 +57,7 @@ class Signal(IntEnum):
     BATCH_PERFORM_ANALYSIS = auto()
     BLOCK_KEYBINDINGS = auto()
     CHECK_UPDATES = auto()
+    CLEAR_DRT_PEAKS = auto()
     CLEAR_RECENT_PROJECTS = auto()
     CLOSE_PROJECT = auto()
     COPY_OUTPUT = auto()
@@ -70,6 +72,7 @@ class Signal(IntEnum):
     DELETE_TEST_RESULT = auto()
     DELETE_ZHIT_RESULT = auto()
     DUPLICATE_PLOT_SETTINGS = auto()
+    EXPORT_DRT_PEAKS = auto()
     EXPORT_PLOT = auto()
     HIDE_BUSY_MESSAGE = auto()
     LOAD_CIRCUIT_FILE = auto()
@@ -139,6 +142,7 @@ class Signal(IntEnum):
     TOGGLE_PLOT_SERIES = auto()
     UNBLOCK_KEYBINDINGS = auto()
     UNDO_PROJECT_ACTION = auto()
+    UPDATE_DRT_PEAK_COLORS = auto()
     VIEWPORT_RESIZED = auto()
 
 

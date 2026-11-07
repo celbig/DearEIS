@@ -19,11 +19,19 @@
 
 from uuid import uuid4 as _uuid4
 from time import time as _time
-from typing import Dict
-from numpy import array
+from typing import (
+    Dict,
+    Optional,
+)
+from numpy import (
+    array,
+    isfinite,
+)
 import pyimpspec as _pyimpspec
 from deareis.data import DataSet
 from deareis.data.drt import (
+    DRTPeakAnalysis,
+    DRTPeakSettings,
     DRTResult,
     DRTSettings,
 )
@@ -31,12 +39,14 @@ from deareis.enums import (
     CrossValidationMethod,
     DRTMethod,
     DRTMode,
+    DRTPeakShape,
     RBFShape,
     RBFType,
     TRNNLSLambdaMethod,
     cross_validation_method_to_value as _cross_validation_method_to_value,
     drt_method_to_value as _drt_method_to_value,
     drt_mode_to_value as _drt_mode_to_value,
+    drt_peak_shape_to_value as _drt_peak_shape_to_value,
     rbf_shape_to_value as _rbf_shape_to_value,
     rbf_type_to_value as _rbf_type_to_value,
     tr_nnls_lambda_method_to_value as _tr_nnls_lambda_method_to_value,
@@ -132,4 +142,86 @@ def calculate_drt(
         lambda_value=result.lambda_value if hasattr(result, "lambda_value") else -1.0,
         mask=mask,
         settings=settings,
+    )
+
+
+def _analyze_gammas(
+    time_constants: _pyimpspec.TimeConstants,
+    gammas: _pyimpspec.Gammas,
+    settings: DRTPeakSettings,
+    suffix: str,
+) -> _pyimpspec.DRTPeaks:
+    shape: str = _drt_peak_shape_to_value[settings.shape]
+    if not (gammas > 0.0).any():
+        # Nothing to fit (e.g., the imaginary part of a DRT without any positive values).
+        return _pyimpspec.DRTPeaks(
+            time_constants=time_constants,
+            peaks=[],
+            suffix=suffix,
+            shape=shape,
+        )
+
+    return _pyimpspec.analyze_drt_peaks(
+        time_constants=time_constants,
+        gammas=gammas,
+        num_peaks=settings.num_peaks,
+        peak_positions=[float(_) for _ in settings.peak_positions] or None,
+        disallow_skew=settings.disallow_skew,
+        shape=shape,
+        global_optimization=settings.global_optimization,
+        suffix=suffix,
+    )
+
+
+def analyze_drt_peaks(
+    drt: DRTResult,
+    settings: DRTPeakSettings,
+) -> DRTPeakAnalysis:
+    """
+    Wrapper for the `pyimpspec.analyze_drt_peaks` function.
+
+    Fits peaks to a distribution of relaxation times (DRT) and calculates their areas.
+    The areas of Gaussian, ZARC, and Havriliak-Negami peaks are the resistances of the corresponding processes.
+    The DRT calculated based on the imaginary part of the impedance data (BHT) is analyzed separately.
+
+    Parameters
+    ----------
+    drt: DRTResult
+        The DRT result to analyze.
+
+    settings: DRTPeakSettings
+        The settings to use.
+
+    Returns
+    -------
+    DRTPeakAnalysis
+    """
+    assert isinstance(drt, DRTResult), drt
+    assert isinstance(settings, DRTPeakSettings), settings
+    assert isinstance(settings.shape, DRTPeakShape), settings.shape
+    assert settings.num_peaks >= 0, settings.num_peaks
+    assert all(
+        isfinite(_) and _ > 0.0 for _ in settings.peak_positions
+    ), "The peak positions must be positive!"
+
+    has_imaginary: bool = drt.imaginary_gammas.size > 0
+    real: _pyimpspec.DRTPeaks = _analyze_gammas(
+        drt.time_constants,
+        drt.real_gammas,
+        settings,
+        suffix="real" if has_imaginary else "",
+    )
+    imaginary: Optional[_pyimpspec.DRTPeaks] = None
+    if has_imaginary:
+        imaginary = _analyze_gammas(
+            drt.time_constants,
+            drt.imaginary_gammas,
+            settings,
+            suffix="imag.",
+        )
+
+    return DRTPeakAnalysis(
+        settings=settings,
+        real=real,
+        imaginary=imaginary,
     )

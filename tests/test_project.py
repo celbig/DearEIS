@@ -17,6 +17,7 @@
 # The licenses of DearEIS' dependencies and/or sources of portions of code are included in
 # the LICENSES folder.
 
+import json
 from os.path import (
     dirname,
     exists,
@@ -63,10 +64,13 @@ class TestProject(TestCase):
                     "example-project-v3.json",
                     "example-project-v4.json",
                     "example-project-v5.json",
+                    "example-project-v6.json",
                 ],
             )
         )
-        cls.project: Project = Project.from_file(cls.example_project_paths[-1])
+        cls.project: Project = Project.from_file(
+            join(dirname(__file__), "example-project-v5.json")
+        )
 
     def test_new_project(self):
         project: Project = Project()
@@ -313,6 +317,106 @@ class TestProject(TestCase):
         drts = self.project.get_drts(data)
         self.assertEqual(len(drts), num_drts + 1)
         self.assertTrue(drt in drts)
+
+    def test_old_drts_have_no_peak_analysis(self):
+        path: str
+        for path in self.example_project_paths:
+            project: Project = Project.from_file(path)
+            drts: List[DRTResult] = [
+                drt for _ in project.get_all_drts().values() for drt in _
+            ]
+            self.assertTrue(
+                all([drt.peak_analysis is None for drt in drts]),
+                msg=path,
+            )
+
+    def test_peak_analysis_round_trip(self):
+        project: Project = Project.from_file(self.example_project_paths[-1])
+        drts: List[DRTResult] = [
+            drt for _ in project.get_all_drts().values() for drt in _
+        ]
+        self.assertGreater(len(drts), 0)
+        drt: DRTResult = drts[0]
+        drt.peak_analysis = deareis.analyze_drt_peaks(
+            drt,
+            deareis.DRTPeakSettings(
+                shape=deareis.DRTPeakShape.ZARC,
+                num_peaks=0,
+                peak_positions=[],
+                disallow_skew=False,
+                global_optimization=False,
+            ),
+        )
+        num_peaks: int = drt.peak_analysis.get_num_peaks()
+        self.assertGreater(num_peaks, 0)
+        loaded: Project = Project.from_dict(json.loads(json.dumps(project.to_dict(session=True))))
+        loaded_drts: List[DRTResult] = [
+            _ for _ in loaded.get_all_drts().values() for _ in _ if _.uuid == drt.uuid
+        ]
+        self.assertEqual(len(loaded_drts), 1)
+        self.assertIsNotNone(loaded_drts[0].peak_analysis)
+        self.assertEqual(loaded_drts[0].peak_analysis.get_num_peaks(), num_peaks)
+        self.assertEqual(
+            loaded_drts[0].peak_analysis.settings.shape,
+            deareis.DRTPeakShape.ZARC,
+        )
+        others: List[DRTResult] = [
+            _ for _ in loaded.get_all_drts().values() for _ in _ if _.uuid != drt.uuid
+        ]
+        self.assertTrue(all([_.peak_analysis is None for _ in others]))
+
+    def test_find_drt_peak_series(self):
+        from deareis.data import DRTPeakSeries
+
+        project: Project = Project.from_file(self.example_project_paths[-1])
+        drts: List[DRTResult] = [
+            drt for _ in project.get_all_drts().values() for drt in _
+        ]
+        drt: DRTResult = drts[0]
+        plot: PlotSettings = project.get_plots()[0]
+
+        def find(uuid: str):
+            return plot.find_series(
+                uuid=uuid,
+                data_sets=project.get_data_sets(),
+                tests=project.get_all_tests(),
+                zhits=project.get_all_zhits(),
+                drts=project.get_all_drts(),
+                fits=project.get_all_fits(),
+                simulations=project.get_simulations(),
+            )
+
+        kinds = ("peaks", "sum", "residual")
+        self.assertIs(find(drt.uuid), drt)
+        kind: str
+        for kind in kinds:
+            # No peak analysis yet
+            self.assertIsNone(find(DRTPeakSeries.generate_uuid(drt.uuid, kind)))
+
+        drt.peak_analysis = deareis.analyze_drt_peaks(
+            drt,
+            deareis.DRTPeakSettings(
+                shape=deareis.DRTPeakShape.GAUSSIAN,
+                num_peaks=0,
+                peak_positions=[],
+                disallow_skew=False,
+                global_optimization=False,
+            ),
+        )
+        for kind in kinds:
+            uuid: str = DRTPeakSeries.generate_uuid(drt.uuid, kind)
+            series = find(uuid)
+            self.assertIsInstance(series, DRTPeakSeries)
+            self.assertIs(series.drt, drt)
+            self.assertEqual(series.kind, kind)
+            self.assertEqual(series.uuid, uuid)
+            plot.add_series(series)
+            self.assertIn(uuid, plot.series_order)
+
+        self.assertIsNone(find(f"{drt.uuid}:foo"))
+        drt.peak_analysis = None
+        for kind in kinds:
+            self.assertIsNone(find(DRTPeakSeries.generate_uuid(drt.uuid, kind)))
 
     def test_delete_drt(self):
         data: DataSet

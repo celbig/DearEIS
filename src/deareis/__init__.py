@@ -70,16 +70,20 @@ from deareis.api.plotting import (
     PlotType,
 )
 from deareis.api.drt import (
+    DRTPeakAnalysis,
+    DRTPeakSettings,
     DRTResult,
     DRTSettings,
     # - enums
     CrossValidationMethod,
     DRTMethod,
     DRTMode,
+    DRTPeakShape,
     RBFShape,
     RBFType,
     TRNNLSLambdaMethod,
     # - functions
+    analyze_drt_peaks,
     calculate_drt,
 )
 from deareis.api.zhit import (

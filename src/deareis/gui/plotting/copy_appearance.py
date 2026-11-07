@@ -29,6 +29,7 @@ import dearpygui.dearpygui as dpg
 from deareis.signals import Signal
 import deareis.signals as signals
 from deareis.data import (
+    DRTPeakSeries,
     DRTResult,
     DataSet,
     FitResult,
@@ -60,6 +61,7 @@ class SeriesBefore:
         toggle_callback: Callable,
     ):
         assert type(series) in [
+            DRTPeakSeries,
             DRTResult,
             DataSet,
             FitResult,

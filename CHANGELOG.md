@@ -11,8 +11,23 @@
   - The names of the elements are used as labels, and the values and fixed/free status of the parameters are retained.
   - A `load-circuit-file` action, which can be assigned a keybinding or used via the command palette, was also added.
 - Added the `parse_mdl` function to the API.
+- Added peak analysis to the DRT tab (requires a version of pyimpspec that provides `pyimpspec.analyze_drt_peaks`).
+  - Peaks can be fitted using skew normal, Gaussian, ZARC, or Havriliak-Negami functions. The area of a Gaussian, ZARC, or Havriliak-Negami peak is the resistance of the corresponding relaxation process.
+  - The number of peaks and/or their approximate positions can be specified, and an optional global optimization step can be used.
+  - The peaks are plotted alongside the DRT, listed in a table (tau, gamma, and the area of each peak), and saved in projects. For BHT, the DRTs based on the real and imaginary parts of the impedance data are analyzed separately.
+  - Added the `Peaks` outputs (CSV, JSON, LaTeX, and Markdown) for copying the table of peaks to the clipboard.
+  - Added the `analyze_drt_peaks` function and the `DRTPeakSettings`, `DRTPeakAnalysis`, and `DRTPeakShape` classes to the API.
+  - The `DRTResult` class has a new `peak_analysis` attribute. Projects created with older versions of DearEIS can still be loaded.
+  - Each peak has its own color (a default palette is used), which can be changed via the table of peaks and is saved in projects.
+  - The areas of the peaks, the sum of the peaks, and the difference between the DRT and the sum of the peaks can be shown/hidden. The area of each peak can also be shown/hidden individually.
+  - The relative difference between the DRT and the sum of the peaks is reported.
+  - The positions of the peaks are shown (and can be specified) as frequencies when the DRT is plotted as a function of frequency.
+  - The table of peaks can be copied to the clipboard (tab-separated values) or saved as a CSV file.
+  - The areas of the peaks, the sum of the peaks, and the difference between the DRT and the sum of the peaks can be added as separate series to DRT plots in the plotting tab (also when exporting plots via matplotlib).
+  - Specifying the number of peaks now results in exactly that number of peaks being analyzed even when overlapping peaks do not produce distinct local maxima (requires a version of pyimpspec that includes the corresponding fix).
 - Fixed a bug that could cause exception messages (e.g., "Item not found") in the terminal when a plot was deleted (e.g., a window with a plot was closed) while the limits of the plot were being adjusted.
 - Fixed a bug that caused an exception when adjusting the limits of an empty plot of residuals.
+- Fixed a bug that caused an exception when toggling the frequency axis in the DRT plot while a shaded series (e.g., the credible intervals of TR-RBF) was present.
 
 
 # 5.1.3 (2026/04/28)

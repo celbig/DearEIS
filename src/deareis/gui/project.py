@@ -45,6 +45,7 @@ from deareis.enums import (
 )
 from deareis.data import (
     DRTResult,
+    DRTPeakSettings,
     DRTSettings,
     DataSet,
     FitResult,
@@ -591,6 +592,11 @@ class ProjectTab:
         assert type(settings) is DRTSettings, settings
         
         self.drt_tab.set_settings(settings)
+
+    def set_drt_peak_settings(self, settings: DRTPeakSettings):
+        assert type(settings) is DRTPeakSettings, settings
+
+        self.drt_tab.set_peak_settings(settings)
 
     def get_simulation_settings(self) -> SimulationSettings:
         return self.simulation_tab.get_settings()

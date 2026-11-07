@@ -1337,11 +1337,54 @@ assert set(cross_validation_method_to_label.keys()) == set(
 ), "Missing cross-validation method string values detected!"
 
 
+class DRTPeakShape(IntEnum):
+    """
+    The function used to fit the peaks of a DRT:
+
+    - SKEW_NORMAL
+    - GAUSSIAN
+    - ZARC
+    - HAVRILIAK_NEGAMI
+    """
+
+    SKEW_NORMAL = 1
+    GAUSSIAN = 2
+    ZARC = 3
+    HAVRILIAK_NEGAMI = 4
+
+
+drt_peak_shape_to_label: Dict[DRTPeakShape, str] = {
+    DRTPeakShape.SKEW_NORMAL: "Skew normal",
+    DRTPeakShape.GAUSSIAN: "Gaussian",
+    DRTPeakShape.ZARC: "ZARC",
+    DRTPeakShape.HAVRILIAK_NEGAMI: "Havriliak-Negami",
+}
+label_to_drt_peak_shape: Dict[str, DRTPeakShape] = {
+    v: k for k, v in drt_peak_shape_to_label.items()
+}
+drt_peak_shape_to_value: Dict[DRTPeakShape, str] = {
+    DRTPeakShape.SKEW_NORMAL: "skew-normal",
+    DRTPeakShape.GAUSSIAN: "gaussian",
+    DRTPeakShape.ZARC: "zarc",
+    DRTPeakShape.HAVRILIAK_NEGAMI: "havriliak-negami",
+}
+assert set(drt_peak_shape_to_label.keys()) == set(
+    label_to_drt_peak_shape.values()
+), "Duplicate DRT peak shape string labels detected!"
+assert set(drt_peak_shape_to_label.keys()) == set(
+    drt_peak_shape_to_value.keys()
+), "Missing DRT peak shape string values detected!"
+
+
 class DRTOutput(IntEnum):
     CSV_SCORES = auto()
     JSON_SCORES = auto()
     LATEX_SCORES = auto()
     MARKDOWN_SCORES = auto()
+    CSV_PEAKS = auto()
+    JSON_PEAKS = auto()
+    LATEX_PEAKS = auto()
+    MARKDOWN_PEAKS = auto()
 
 
 drt_output_to_label: Dict[DRTOutput, str] = {
@@ -1349,6 +1392,10 @@ drt_output_to_label: Dict[DRTOutput, str] = {
     DRTOutput.JSON_SCORES: "JSON - scores",
     DRTOutput.LATEX_SCORES: "LaTeX - scores",
     DRTOutput.MARKDOWN_SCORES: "Markdown - scores",
+    DRTOutput.CSV_PEAKS: "CSV - peaks",
+    DRTOutput.JSON_PEAKS: "JSON - peaks",
+    DRTOutput.LATEX_PEAKS: "LaTeX - peaks",
+    DRTOutput.MARKDOWN_PEAKS: "Markdown - peaks",
 }
 label_to_drt_output: Dict[str, DRTOutput] = {
     v: k for k, v in drt_output_to_label.items()

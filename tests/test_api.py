@@ -17,6 +17,7 @@
 # The licenses of DearEIS' dependencies and/or sources of portions of code are included in
 # the LICENSES folder.
 
+import json
 from pathlib import Path
 from os.path import (
     dirname,
@@ -38,12 +39,14 @@ from numpy import (
     isclose,
     isnan,
     ndarray,
+    pi,
 )
 import matplotlib
 import matplotlib.pyplot
 import pyimpspec
 import deareis
 from deareis.config import Config
+from deareis.enums import drt_peak_shape_to_value
 
 matplotlib.use("Agg")
 
@@ -970,6 +973,283 @@ class TestDRT(TestCase):
 
 
 # TODO: Update tests
+class TestDRTPeakAnalysis(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.data: deareis.DataSet = deareis.parse_data(TEST_DATA_PATH)[0]
+        cls.tr_nnls: deareis.DRTResult = cls.calculate(deareis.DRTMethod.TR_NNLS)
+        cls.bht: deareis.DRTResult = cls.calculate(deareis.DRTMethod.BHT)
+
+    @classmethod
+    def calculate(cls, method: deareis.DRTMethod) -> deareis.DRTResult:
+        return deareis.calculate_drt(
+            cls.data,
+            settings=deareis.DRTSettings(
+                method=method,
+                mode=deareis.DRTMode.COMPLEX,
+                lambda_value=-1.0,
+                rbf_type=deareis.RBFType.GAUSSIAN,
+                derivative_order=1,
+                rbf_shape=deareis.RBFShape.FWHM,
+                shape_coeff=0.5,
+                inductance=False,
+                credible_intervals=False,
+                timeout=60,
+                num_samples=200,
+                num_attempts=2,
+                maximum_symmetry=0.5,
+                fit=None,
+                gaussian_width=0.15,
+                num_per_decade=100,
+                cross_validation_method=deareis.CrossValidationMethod.MGCV,
+                tr_nnls_lambda_method=deareis.TRNNLSLambdaMethod.CUSTOM,
+            ),
+        )
+
+    @staticmethod
+    def settings(**kwargs) -> deareis.DRTPeakSettings:
+        defaults: dict = dict(
+            shape=deareis.DRTPeakShape.GAUSSIAN,
+            num_peaks=0,
+            peak_positions=[],
+            disallow_skew=False,
+            global_optimization=False,
+        )
+        defaults.update(kwargs)
+
+        return deareis.DRTPeakSettings(**defaults)
+
+    def test_shapes_match_pyimpspec(self):
+        shape: deareis.DRTPeakShape
+        for shape in deareis.DRTPeakShape:
+            analysis: deareis.DRTPeakAnalysis = deareis.analyze_drt_peaks(
+                self.tr_nnls,
+                self.settings(shape=shape),
+            )
+            self.assertIsNone(analysis.imaginary, msg=shape)
+            control: pyimpspec.DRTPeaks = pyimpspec.analyze_drt_peaks(
+                self.tr_nnls.time_constants,
+                self.tr_nnls.real_gammas,
+                shape=drt_peak_shape_to_value[shape],
+            )
+            self.assertEqual(analysis.real.get_num_peaks(), control.get_num_peaks())
+            self.assertGreater(analysis.real.get_num_peaks(), 0, msg=shape)
+            df: DataFrame = analysis.to_dataframe()
+            self.assertEqual(
+                list(df.columns),
+                ["#", "tau (s)", "gamma (ohm)", "R_peak (ohm)"],
+            )
+            self.assertTrue(
+                allclose(df["R_peak (ohm)"], control.to_peaks_dataframe().iloc[:, 2]),
+                msg=shape,
+            )
+
+    def test_bht_real_and_imaginary(self):
+        analysis: deareis.DRTPeakAnalysis = deareis.analyze_drt_peaks(
+            self.bht,
+            self.settings(shape=deareis.DRTPeakShape.ZARC),
+        )
+        self.assertIsNotNone(analysis.imaginary)
+        self.assertGreater(analysis.real.get_num_peaks(), 0)
+        self.assertGreater(analysis.imaginary.get_num_peaks(), 0)
+        df: DataFrame = analysis.to_dataframe()
+        self.assertEqual(df.columns[0], "part")
+        self.assertEqual(
+            set(df["part"]),
+            {"real", "imag."},
+        )
+        self.assertEqual(len(df), analysis.get_num_peaks())
+
+    def test_num_peaks(self):
+        analysis: deareis.DRTPeakAnalysis = deareis.analyze_drt_peaks(
+            self.tr_nnls,
+            self.settings(num_peaks=2),
+        )
+        self.assertEqual(analysis.real.get_num_peaks(), 2)
+
+    def test_peak_positions(self):
+        positions: List[float] = [1e-4, 1e-2]
+        analysis: deareis.DRTPeakAnalysis = deareis.analyze_drt_peaks(
+            self.tr_nnls,
+            self.settings(peak_positions=positions, num_peaks=5),
+        )
+        self.assertEqual(analysis.real.get_num_peaks(), len(positions))
+
+    def test_no_peaks(self):
+        # All of the gamma values are zero or negative
+        drt: deareis.DRTResult = self.calculate(deareis.DRTMethod.TR_NNLS)
+        drt.real_gammas = drt.real_gammas * 0.0
+        shape: deareis.DRTPeakShape
+        for shape in deareis.DRTPeakShape:
+            analysis: deareis.DRTPeakAnalysis = deareis.analyze_drt_peaks(
+                drt,
+                self.settings(shape=shape),
+            )
+            self.assertEqual(analysis.get_num_peaks(), 0, msg=shape)
+            self.assertTrue(analysis.to_dataframe().empty)
+
+        drt.real_gammas = -abs(drt.real_gammas) - 1.0
+        analysis = deareis.analyze_drt_peaks(
+            drt,
+            self.settings(shape=deareis.DRTPeakShape.SKEW_NORMAL),
+        )
+        self.assertEqual(analysis.get_num_peaks(), 0)
+
+    def test_invalid_settings(self):
+        with self.assertRaises(AssertionError):
+            deareis.analyze_drt_peaks(
+                self.tr_nnls,
+                self.settings(peak_positions=[-1.0]),
+            )
+
+        with self.assertRaises(AssertionError):
+            deareis.analyze_drt_peaks(
+                self.tr_nnls,
+                self.settings(num_peaks=-1),
+            )
+
+    def test_to_dict_from_dict(self):
+        drt: deareis.DRTResult = self.calculate(deareis.DRTMethod.BHT)
+        shape: deareis.DRTPeakShape
+        for shape in deareis.DRTPeakShape:
+            drt.peak_analysis = deareis.analyze_drt_peaks(
+                drt,
+                self.settings(shape=shape),
+            )
+            dictionary: dict = json.loads(json.dumps(drt.to_dict()))
+            result: deareis.DRTResult = deareis.DRTResult.from_dict(
+                dictionary,
+                data=self.data,
+            )
+            self.assertIsNotNone(result.peak_analysis, msg=shape)
+            self.assertEqual(result.peak_analysis.settings, drt.peak_analysis.settings)
+            self.assertTrue(
+                allclose(
+                    result.peak_analysis.to_dataframe().iloc[:, 2:],
+                    drt.peak_analysis.to_dataframe().iloc[:, 2:],
+                ),
+                msg=shape,
+            )
+
+    def test_old_results_have_no_peak_analysis(self):
+        dictionary: dict = self.tr_nnls.to_dict()
+        dictionary["version"] = 4
+        del dictionary["peak_analysis"]
+        dictionary["settings"]["version"] = 4
+        result: deareis.DRTResult = deareis.DRTResult.from_dict(
+            dictionary,
+            data=self.data,
+        )
+        self.assertIsNone(result.peak_analysis)
+        self.assertTrue(result.to_peak_analysis_dataframe().empty)
+
+    def test_frequency_dataframe(self):
+        analysis: deareis.DRTPeakAnalysis = deareis.analyze_drt_peaks(
+            self.tr_nnls,
+            self.settings(),
+        )
+        tau: DataFrame = analysis.to_dataframe()
+        freq: DataFrame = analysis.to_dataframe(frequency=True)
+        self.assertEqual(
+            list(freq.columns),
+            ["#", "f (Hz)", "gamma (ohm)", "R_peak (ohm)"],
+        )
+        self.assertTrue(
+            allclose(freq["f (Hz)"], 1.0 / (2 * pi * tau["tau (s)"]))
+        )
+        self.assertTrue(allclose(freq.iloc[:, 2:], tau.iloc[:, 2:]))
+
+    def test_colors(self):
+        drt: deareis.DRTResult = self.calculate(deareis.DRTMethod.BHT)
+        drt.peak_analysis = deareis.analyze_drt_peaks(drt, self.settings())
+        analysis: deareis.DRTPeakAnalysis = drt.peak_analysis
+        self.assertEqual(analysis.colors, {})
+        num_real: int = analysis.real.get_num_peaks()
+        self.assertGreater(num_real, 1)
+        colors: List[List[float]] = [
+            analysis.get_peak_color("real", i) for i in range(0, num_real)
+        ]
+        self.assertNotEqual(colors[0], colors[1])
+        # The imaginary peaks continue the palette
+        self.assertNotEqual(analysis.get_peak_color("imag.", 0), colors[0])
+
+        analysis.set_peak_color("real", 1, [1.0, 2.0, 3.0, 4.0])
+        self.assertEqual(analysis.get_peak_color("real", 1), [1.0, 2.0, 3.0, 4.0])
+        self.assertEqual(analysis.get_peak_color("real", 0), colors[0])
+
+        serialized: str = json.dumps(drt.to_dict())
+        result: deareis.DRTResult = deareis.DRTResult.from_dict(
+            json.loads(serialized),
+            data=self.data,
+        )
+        self.assertEqual(
+            result.peak_analysis.get_peak_color("real", 1),
+            [1.0, 2.0, 3.0, 4.0],
+        )
+
+        # Results saved before colors were added
+        dictionary: dict = json.loads(serialized)
+        del dictionary["peak_analysis"]["colors"]
+        result = deareis.DRTResult.from_dict(dictionary, data=self.data)
+        self.assertEqual(result.peak_analysis.colors, {})
+        self.assertEqual(result.peak_analysis.get_peak_color("real", 0), colors[0])
+
+    def test_residuals(self):
+        drt: deareis.DRTResult = self.calculate(deareis.DRTMethod.TR_NNLS)
+        analysis: deareis.DRTPeakAnalysis = deareis.analyze_drt_peaks(
+            drt,
+            self.settings(),
+        )
+        tau, real, imaginary = analysis.get_residuals(drt)
+        self.assertIsNone(imaginary)
+        self.assertEqual(tau.shape, real.shape)
+        self.assertTrue(
+            allclose(
+                real,
+                drt.real_gammas - analysis.real.get_gammas(num_per_decade=-1),
+            )
+        )
+        value: float = analysis.get_relative_residual(drt)
+        self.assertTrue(0.0 <= value < 1.0, msg=value)
+
+        # A DRT that is exactly the sum of the fitted peaks
+        drt.real_gammas = analysis.real.get_gammas(num_per_decade=-1)
+        self.assertAlmostEqual(analysis.get_relative_residual(drt), 0.0)
+
+        bht: deareis.DRTResult = self.calculate(deareis.DRTMethod.BHT)
+        analysis = deareis.analyze_drt_peaks(bht, self.settings())
+        tau, real, imaginary = analysis.get_residuals(bht)
+        self.assertIsNotNone(imaginary)
+        self.assertFalse(isnan(analysis.get_relative_residual(bht, "imag.")))
+
+    def test_peak_series(self):
+        from deareis.data import DRTPeakSeries
+
+        drt: deareis.DRTResult = self.calculate(deareis.DRTMethod.BHT)
+        drt.peak_analysis = deareis.analyze_drt_peaks(drt, self.settings())
+        num_peaks: int = drt.peak_analysis.get_num_peaks()
+        kind: str
+        for kind in ("peaks", "sum", "residual"):
+            series: DRTPeakSeries = DRTPeakSeries(drt, kind)
+            self.assertEqual(
+                DRTPeakSeries.parse_uuid(series.uuid),
+                (drt.uuid, kind),
+            )
+            curves = series.get_curves()
+            parts = set(_[0] for _ in curves)
+            self.assertEqual(parts, {"real", "imag."}, msg=kind)
+            if kind == "peaks":
+                self.assertEqual(len(curves), num_peaks)
+            else:
+                self.assertEqual(len(curves), 2)
+
+            for _, _, tau, gammas in curves:
+                self.assertEqual(tau.shape, gammas.shape)
+
+        self.assertIsNone(DRTPeakSeries.parse_uuid(drt.uuid))
+        self.assertIsNone(DRTPeakSeries.parse_uuid(f"{drt.uuid}:foo"))
+
+
 class TestZHIT(TestCase):
     @classmethod
     def setUpClass(cls):

@@ -20,15 +20,24 @@
 from typing import (
     Optional,
 )
+from os.path import (
+    dirname,
+    exists,
+)
+from pandas import DataFrame
 import deareis.api.drt as api
 from deareis.data import (
+    DRTPeakSeries,
+    DRTPeakSettings,
     DRTResult,
     DRTSettings,
     DataSet,
     PlotSettings,
     Project,
 )
+from deareis.data.drt import DRT_PEAK_SERIES_KINDS
 from deareis.gui import ProjectTab
+from deareis.gui.file_dialog import FileDialog
 from deareis.signals import Signal
 import deareis.signals as signals
 from deareis.state import STATE
@@ -88,6 +97,9 @@ def apply_drt_settings(*args, **kwargs):
     if settings is None:
         return
     project_tab.set_drt_settings(settings)
+    peak_settings: Optional[DRTPeakSettings] = kwargs.get("peak_settings")
+    if peak_settings is not None:
+        project_tab.set_drt_peak_settings(peak_settings)
 
 
 def perform_drt(*args, **kwargs):
@@ -119,3 +131,115 @@ def perform_drt(*args, **kwargs):
     signals.emit(Signal.HIDE_BUSY_MESSAGE)
     if batch is False:
         signals.emit(Signal.CREATE_PROJECT_SNAPSHOT)
+
+
+def analyze_drt_peaks(*args, **kwargs):
+    project: Optional[Project] = STATE.get_active_project()
+    project_tab: Optional[ProjectTab] = STATE.get_active_project_tab()
+    if project is None or project_tab is None:
+        return
+    drt: Optional[DRTResult] = kwargs.get("drt")
+    data: Optional[DataSet] = kwargs.get("data")
+    settings: Optional[DRTPeakSettings] = kwargs.get("settings")
+    if drt is None or data is None or settings is None:
+        return
+    signals.emit(Signal.SHOW_BUSY_MESSAGE, message="Analyzing peaks")
+    try:
+        drt.peak_analysis = api.analyze_drt_peaks(drt=drt, settings=settings)
+        project_tab.select_drt_result(drt, data)
+        _update_plotting_tab(project, project_tab, drt)
+    finally:
+        signals.emit(Signal.HIDE_BUSY_MESSAGE)
+    signals.emit(Signal.CREATE_PROJECT_SNAPSHOT)
+
+
+def _update_plotting_tab(project: Project, project_tab: ProjectTab, drt: DRTResult):
+    # The results of the peak analysis can be plotted as separate series.
+    settings: Optional[PlotSettings] = project_tab.get_active_plot()
+    if settings is None:
+        return
+
+    project_tab.plotting_tab.populate_drts(
+        project.get_all_drts(),
+        project.get_data_sets(),
+        settings,
+    )
+    if any(
+        DRTPeakSeries.generate_uuid(drt.uuid, kind) in settings.series_order
+        for kind in DRT_PEAK_SERIES_KINDS
+    ):
+        signals.emit(Signal.SELECT_PLOT_SETTINGS, settings=settings)
+
+
+def update_drt_peak_colors(*args, **kwargs):
+    project: Optional[Project] = STATE.get_active_project()
+    project_tab: Optional[ProjectTab] = STATE.get_active_project_tab()
+    if project is None or project_tab is None:
+        return
+    drt: Optional[DRTResult] = kwargs.get("drt")
+    if drt is None or drt.peak_analysis is None:
+        return
+    _update_plotting_tab(project, project_tab, drt)
+    signals.emit(Signal.CREATE_PROJECT_SNAPSHOT)
+
+
+def clear_drt_peaks(*args, **kwargs):
+    project: Optional[Project] = STATE.get_active_project()
+    project_tab: Optional[ProjectTab] = STATE.get_active_project_tab()
+    if project is None or project_tab is None:
+        return
+    drt: Optional[DRTResult] = kwargs.get("drt")
+    data: Optional[DataSet] = kwargs.get("data")
+    if drt is None or data is None or drt.peak_analysis is None:
+        return
+    drt.peak_analysis = None
+    project_tab.select_drt_result(drt, data)
+    settings: Optional[PlotSettings] = project_tab.get_active_plot()
+    update_plot: bool = settings is not None and any(
+        DRTPeakSeries.generate_uuid(drt.uuid, kind) in settings.series_order
+        for kind in DRT_PEAK_SERIES_KINDS
+    )
+    if settings is not None:
+        # The series of the peak analysis are no longer available.
+        kind: str
+        for kind in DRT_PEAK_SERIES_KINDS:
+            settings.remove_series(DRTPeakSeries.generate_uuid(drt.uuid, kind))
+        project_tab.plotting_tab.populate_drts(
+            project.get_all_drts(),
+            project.get_data_sets(),
+            settings,
+        )
+    if update_plot:
+        signals.emit(Signal.SELECT_PLOT_SETTINGS, settings=settings)
+    signals.emit(Signal.CREATE_PROJECT_SNAPSHOT)
+
+
+def export_drt_peaks(*args, **kwargs):
+    drt: Optional[DRTResult] = kwargs.get("drt")
+    frequency: bool = kwargs.get("frequency", False)
+    if drt is None or drt.peak_analysis is None:
+        return
+
+    dataframe: DataFrame = drt.to_peak_analysis_dataframe(frequency=frequency)
+    if dataframe.empty:
+        return
+
+    def save(*args, **kwargs):
+        path: str = kwargs["path"]
+        if not path.lower().endswith(".csv"):
+            path += ".csv"
+
+        directory: str = dirname(path)
+        if exists(directory):
+            STATE.latest_data_set_directory = directory
+
+        dataframe.to_csv(path, index=False)
+
+    FileDialog(
+        cwd=STATE.latest_data_set_directory,
+        label="Select file path",
+        callback=lambda *a, **k: save(*a, **k),
+        default_extension=".csv",
+        extensions=[".csv"],
+        save=True,
+    )

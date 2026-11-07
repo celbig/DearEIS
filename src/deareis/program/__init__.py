@@ -110,10 +110,14 @@ from .zhit import (
     select_zhit_result,
 )
 from .drt import (
+    analyze_drt_peaks,
     apply_drt_settings,
+    clear_drt_peaks,
+    export_drt_peaks,
     delete_drt_result,
     perform_drt,
     select_drt_result,
+    update_drt_peak_colors,
 )
 from .fitting import (
     apply_fit_settings,
@@ -477,6 +481,47 @@ def copy_output(*args, **kwargs):
                         floatfmt=".3g",
                     )
 
+        elif (
+            output == DRTOutput.CSV_PEAKS
+            or output == DRTOutput.JSON_PEAKS
+            or output == DRTOutput.LATEX_PEAKS
+            or output == DRTOutput.MARKDOWN_PEAKS
+        ):
+            peak_frequency: bool = project_tab.drt_tab.is_drt_frequency()
+            peaks_dataframe: DataFrame = drt.to_peak_analysis_dataframe(
+                columns=None
+                if output != DRTOutput.LATEX_PEAKS
+                else [
+                    "Part",
+                    r"\#",
+                    r"$f$ (Hz)" if peak_frequency else r"$\tau$ (s)",
+                    r"$\gamma$ ($\Omega$)",
+                    r"$R_{\rm peak}$ ($\Omega$)",
+                ],
+                frequency=peak_frequency,
+            )
+            if not peaks_dataframe.empty:
+                if output == DRTOutput.CSV_PEAKS:
+                    clipboard_content = peaks_dataframe.to_csv(index=False)
+                elif output == DRTOutput.JSON_PEAKS:
+                    clipboard_content = peaks_dataframe.to_json()
+                elif output == DRTOutput.LATEX_PEAKS:
+                    clipboard_content = (
+                        peaks_dataframe.style.format(
+                            {
+                                column: "{:.3g}"
+                                for column in peaks_dataframe.columns[-3:]
+                            }
+                        )
+                        .hide(axis="index")
+                        .to_latex(hrules=True)
+                    )
+                elif output == DRTOutput.MARKDOWN_PEAKS:
+                    clipboard_content = peaks_dataframe.to_markdown(
+                        index=False,
+                        floatfmt=".3g",
+                    )
+
     else:
         raise Exception(f"Unsupported output type: {type(output)}")
 
@@ -747,6 +792,36 @@ def copy_plot_data(*args, **kwargs):
 
     elif type(plot) is DRT:
         for series in plot.get_series():
+            if "peak" in series:
+                # Peaks fitted to the DRT: one column per peak, one for their sum,
+                # and one for the difference between the DRT and the sum.
+                part: str = f", {series['part']}" if series.get("part") else ""
+                group: str = series.get("group") or ""
+                if group != "":
+                    group += ", "
+
+                x_label: str = "f (Hz)" if frequency else "tau (s)"
+                x_values = (1 / (2 * pi * series["tau"])) if frequency else series["tau"]
+                if series["peak"] == -2:
+                    # The difference is evaluated at the time constants of the DRT.
+                    dictionary[f"{x_label} - {group}Difference{part}"] = x_values
+                    dictionary[f"gamma (ohm) - {group}Difference{part}"] = series[
+                        "gamma"
+                    ]
+                    continue
+
+                dictionary[f"{x_label} - {group}Peaks{part}"] = x_values
+                if series["peak"] >= 0:
+                    dictionary[
+                        f"gamma (ohm) - {group}Peak {series['peak'] + 1}{part}"
+                    ] = series["upper"]
+                else:
+                    dictionary[f"gamma (ohm) - {group}Sum of peaks{part}"] = series[
+                        "gamma"
+                    ]
+
+                continue
+
             label = series.get("label")
             if label == "gamma":
                 label = ""
@@ -1058,6 +1133,10 @@ def initialize_program(args: Namespace):
     signals.register(Signal.SELECT_DRT_RESULT, select_drt_result)
     signals.register(Signal.DELETE_DRT_RESULT, delete_drt_result)
     signals.register(Signal.APPLY_DRT_SETTINGS, apply_drt_settings)
+    signals.register(Signal.ANALYZE_DRT_PEAKS, analyze_drt_peaks)
+    signals.register(Signal.CLEAR_DRT_PEAKS, clear_drt_peaks)
+    signals.register(Signal.EXPORT_DRT_PEAKS, export_drt_peaks)
+    signals.register(Signal.UPDATE_DRT_PEAK_COLORS, update_drt_peak_colors)
 
     # Signals for the fitting tab
     signals.register(Signal.PERFORM_FIT, perform_fit)

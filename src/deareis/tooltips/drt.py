@@ -104,6 +104,59 @@ If the BHT method is used, then scores for the consistency of the data will be i
         "delete": """
 Delete the current analysis result.
     """.strip(),
+        "peak_shape": """
+The function that is fitted to each peak of the distribution of relaxation times:
+- Skew normal: the area of a peak is obtained by integrating over the range of the time constants.
+- Gaussian: a Gaussian function of ln(tau).
+- ZARC: the distribution of relaxation times of a ZARC element.
+- Havriliak-Negami: the distribution of relaxation times of a Havriliak-Negami element.
+
+The area of a Gaussian, ZARC, or Havriliak-Negami peak is the resistance (R) of the corresponding relaxation process.
+    """.strip(),
+        "num_peaks": """
+The number of peaks to analyze. The tallest peaks are used first and, if there are fewer local maxima than requested (e.g., overlapping peaks), then shoulders are added as peaks.
+
+A value of zero means that all of the detected peaks are analyzed.
+    """.strip(),
+        "peak_positions": """
+Comma-separated approximate time constants (in seconds) of the peaks to analyze, e.g., 1e-4, 3e-2.
+
+If the DRT is plotted as a function of frequency, then the positions are frequencies (in hertz) instead.
+
+If any are provided, then the number of peaks setting is ignored.
+    """.strip(),
+        "disallow_skew": """
+Use normal distributions instead of skew normal distributions.
+
+This is only used when the peak shape is skew normal.
+    """.strip(),
+        "global_optimization": """
+Perform a global search before refining the fit. This is slower but more robust when peaks overlap.
+    """.strip(),
+        "analyze_peaks": """
+Fit the chosen peak shape to the peaks of the selected distribution of relaxation times and calculate the area (R_peak) of each peak.
+
+If the BHT method was used, then the DRTs based on the real and imaginary parts of the impedance data are analyzed separately.
+    """.strip(),
+        "clear_peaks": """
+Remove the results of the peak analysis from the selected analysis result.
+    """.strip(),
+        "show_peaks": """
+Choose what is plotted: the areas of the individual peaks, the sum of the peaks, and/or the difference between the DRT and the sum of the peaks.
+    """.strip(),
+        "toggle_peak": """
+Show/hide the area of this peak. The color can be changed by clicking on the colored square.
+    """.strip(),
+        "copy_peaks_table": """
+Copy the table of peaks to the clipboard as tab-separated values (e.g., for pasting into a spreadsheet).
+
+The positions are given as time constants or frequencies depending on whether or not the DRT is plotted as a function of frequency.
+    """.strip(),
+        "save_peaks_table": """
+Save the table of peaks as a CSV file.
+
+The positions are given as time constants or frequencies depending on whether or not the DRT is plotted as a function of frequency.
+    """.strip(),
         "score_mean": """
 The similarity of the means of the Hilbert transformed impedances and the DRT impedances (i.e., without the high-frequency resistance and inductance).
     """.strip(),

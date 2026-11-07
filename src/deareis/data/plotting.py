@@ -44,7 +44,10 @@ from pyimpspec.typing import (
 from deareis.data import DataSet
 from deareis.data.kramers_kronig import KramersKronigResult
 from deareis.data.zhit import ZHITResult
-from deareis.data.drt import DRTResult
+from deareis.data.drt import (
+    DRTPeakSeries,
+    DRTResult,
+)
 from deareis.data.fitting import FitResult
 from deareis.data.simulation import SimulationResult
 from deareis.enums import (
@@ -466,6 +469,7 @@ class PlotSettings:
             KramersKronigResult,
             ZHITResult,
             DRTResult,
+            DRTPeakSeries,
             FitResult,
             SimulationResult,
         ]:
@@ -544,11 +548,22 @@ class PlotSettings:
             
             return None
 
-        def find_drt() -> Optional[DRTResult]:
+        def find_drt() -> Optional[Union[DRTResult, DRTPeakSeries]]:
+            # The results of a DRT peak analysis are plotted as separate series
+            # whose UUIDs are derived from the UUID of the DRT result.
+            parsed: Optional[Tuple[str, str]] = DRTPeakSeries.parse_uuid(uuid)
+            drt_uuid: str = parsed[0] if parsed is not None else uuid
+
             drt: DRTResult
             for drt in [drt for _ in drts.values() for drt in _]:
-                if drt.uuid == uuid:
+                if drt.uuid != drt_uuid:
+                    continue
+                elif parsed is None:
                     return drt
+                elif drt.peak_analysis is None:
+                    return None
+
+                return DRTPeakSeries(drt, parsed[1])
             
             return None
 
