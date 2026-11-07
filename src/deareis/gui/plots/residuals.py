@@ -270,20 +270,17 @@ class Residuals(Plot):
                 error_lim = ceil(error_lim / n) * n + n
 
         dpg.split_frame()
-        min_x: float = min(freq) if freq.size > 0 else 0.5
-        max_x: float = max(freq) if freq.size > 0 else 1.0
+        has_freq: bool = freq is not None and freq.size > 0
+        min_x: float = min(freq) if has_freq else 0.5
+        max_x: float = max(freq) if has_freq else 1.0
         if min_x == 0.0:
             min_x = 1e-1
 
         dx: float = 0.1
         dpg.set_axis_limits(
             self._x_axis,
-            ymin=10 ** (floor(log(min_x) / dx) * dx - dx)
-            if (freq is not None and freq.size > 0)
-            else 0,
-            ymax=10 ** (ceil(log(max_x) / dx) * dx + dx)
-            if (freq is not None and freq.size > 0)
-            else 1,
+            ymin=10 ** (floor(log(min_x) / dx) * dx - dx) if has_freq else 0,
+            ymax=10 ** (ceil(log(max_x) / dx) * dx + dx) if has_freq else 1,
         )
         dpg.set_axis_limits(self._y_axis_1, ymin=-error_lim, ymax=error_lim)
 
