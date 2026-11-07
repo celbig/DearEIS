@@ -20,6 +20,7 @@
 from typing import (
     Dict,
     List,
+    Tuple,
 )
 import dearpygui.dearpygui as dpg
 from deareis.enums import (
@@ -530,6 +531,16 @@ DEFAULT_KEYBINDINGS: List[Keybinding] = [
 
 # TODO: Replace string keys with int keys (e.g. themes.nyquist.data) and use strings only in the
 # config file?
+# Where the contributions of the components of a circuit are placed on the real axis
+# (see pyimpspec.Circuit.get_subcircuit_impedances)
+SUBCIRCUIT_OFFSETS: Tuple[str, ...] = (
+    "none",
+    "series_resistance",
+    "cumulative_dc",
+    "peak",
+)
+
+
 DEFAULT_MARKERS: Dict[str, int] = {
     "bode_magnitude_data": dpg.mvPlotMarker_Circle,
     "bode_magnitude_simulation": dpg.mvPlotMarker_Cross,

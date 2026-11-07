@@ -796,6 +796,36 @@ class TestMPLSubcircuits(TestCase):
         self.assertIn("(R_2C_1)", labels)
         self.assertIn("(R_3W_1)", labels)
 
+    def test_other_offsets(self):
+        for offset in ("cumulative_dc", "peak"):
+            settings = self.create_settings(deareis.PlotType.NYQUIST_IMPEDANCE)
+            _, axes = deareis.mpl.plot(
+                settings,
+                self.project,
+                subcircuits=True,
+                subcircuit_offset=offset,
+            )
+            labels: List[str] = self.get_labels(axes)
+            self.assertNotIn("R_1", labels)
+            self.assertIn("(R_2C_1)", labels)
+            self.assertIn("(R_3W_1)", labels)
+            matplotlib.pyplot.close("all")
+
+    def test_subcircuit_color_indices(self):
+        from deareis.utility import get_subcircuit_color_indices
+
+        circuit = self.result.circuit
+        names = {
+            circuit.get_element_name(element): index
+            for element, index in get_subcircuit_color_indices(circuit).items()
+        }
+        self.assertEqual(names, {"R_1": 0, "R_2": 1, "C_1": 1, "R_3": 2, "W_1": 2})
+        names = {
+            circuit.get_element_name(element): index
+            for element, index in get_subcircuit_color_indices(circuit, offset="peak").items()
+        }
+        self.assertEqual(names, {"R_2": 1, "C_1": 1, "R_3": 2, "W_1": 2})
+
     def test_other_plot_types(self):
         for plot_type in (
             deareis.PlotType.NYQUIST_ADMITTANCE,

@@ -58,6 +58,7 @@ from pyimpspec import (
     Container,
     Element,
     ImpedanceError,
+    Resistor,
     InvalidParameterKey,
     ParsingError,
     TokenizingError,
@@ -409,6 +410,47 @@ def find_parent_containers(circuit: Circuit) -> Dict[Element, Container]:
     )
 
     return parent_containers
+
+
+def get_subcircuit_color_indices(
+    circuit: Circuit,
+    offset: str = "none",
+) -> Dict[Element, int]:
+    """
+    Map the elements of a circuit to the index of the component of the top-level series connection that they belong to
+    (e.g., R_2 and C_1 both belong to the component with index 1 in R(RC)(RW)).
+    The indices correspond to the colors used when plotting the contributions of the components.
+    Resistors in the top-level series connection are excluded if they are not plotted separately (i.e., when using an offset).
+    Elements nested inside the subcircuits of container elements are included.
+    """
+    def collect(item: Union[Element, Connection]) -> List[Element]:
+        elements: List[Element] = []
+        if isinstance(item, Connection):
+            child: Union[Element, Connection]
+            for child in item:
+                elements.extend(collect(child))
+        else:
+            elements.append(item)
+            if isinstance(item, Container):
+                con: Optional[Connection]
+                for con in item.get_subcircuits().values():
+                    if con is not None:
+                        elements.extend(collect(con))
+
+        return elements
+
+    indices: Dict[Element, int] = {}
+    i: int
+    item: Union[Element, Connection]
+    for i, item in enumerate(circuit):
+        if offset != "none" and isinstance(item, Resistor):
+            continue
+
+        element: Element
+        for element in collect(item):
+            indices[element] = i
+
+    return indices
 
 
 def process_cdc(cdc: str) -> Tuple[Optional[Circuit], str]:

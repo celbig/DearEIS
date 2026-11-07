@@ -52,7 +52,9 @@ from pyimpspec import (
     parse_cdc,
     parse_mdl,
 )
+from numpy import allclose
 import dearpygui.dearpygui as dpg
+import deareis.themes as themes
 from deareis.utility import calculate_window_position_dimensions
 import deareis.signals as signals
 from deareis.signals import Signal
@@ -2015,8 +2017,20 @@ Element & Parameter & Value & Std. err. (\%) & Unit & Fixed \\
         assert all(series_visible())
         tab.select_subcircuit_offset("No offset")
         num_no_offset: int = num_series()
-        tab.select_subcircuit_offset("Series R offset")
-        assert num_series() <= num_no_offset
+        for label in ("Series R offset", "Cumulative R (DC)", "Peak-aligned"):
+            tab.select_subcircuit_offset(label)
+            assert num_series() <= num_no_offset
+            assert num_series() > num_base
+        # The elements are colored like their contributions
+        assert any(
+            dpg.get_item_theme(_) in themes.subcircuits.texts
+            for widgets in tab.parameters_table._element_widgets.values()
+            for _ in widgets
+        )
+        assert any(
+            dpg.get_item_theme(_.tag) in themes.subcircuits.nodes
+            for _ in tab.circuit_preview.parser.nodes
+        )
         tab.select_subcircuit_offset("No offset")
         signals.emit(
             Signal.COPY_PLOT_DATA,
@@ -2035,6 +2049,35 @@ Element & Parameter & Value & Std. err. (\%) & Unit & Fixed \\
         dpg.set_value(tab.nyquist_subcircuits_checkbox, False)
         tab.toggle_subcircuits(False)
         assert num_series() == num_base
+        assert not any(
+            dpg.get_item_theme(_.tag) in themes.subcircuits.nodes
+            for _ in tab.circuit_preview.parser.nodes
+        )
+
+        # Real & imag. plot
+        num_impedance_series = lambda: len(tab.impedance_plot.get_series())
+        dpg.set_value(tab.impedance_subcircuits_checkbox, True)
+        tab.toggle_impedance_subcircuits(True)
+        assert num_impedance_series() > num_base
+        series = tab.impedance_plot.get_series()
+        # The last cumulative real part is the real part of the fit
+        assert allclose(series[-1]["impedances"].real, series[2]["impedances"].real)
+        # The imaginary parts sum up to the imaginary part of the fit
+        assert allclose(
+            sum(_["impedances"].imag for _ in series[num_base:]),
+            series[2]["impedances"].imag,
+        )
+        signals.emit(
+            Signal.COPY_PLOT_DATA,
+            plot=tab.impedance_plot,
+            context=Context.FITTING_TAB,
+        )
+        sleep(0.5)
+        headers = dpg.get_clipboard_text().split("\n")[0]
+        assert series[-1]["component"] in headers, headers
+        dpg.set_value(tab.impedance_subcircuits_checkbox, False)
+        tab.toggle_impedance_subcircuits(False)
+        assert num_impedance_series() == num_base
 
     @next_step(subcircuits)
     def validate_perform_fit():

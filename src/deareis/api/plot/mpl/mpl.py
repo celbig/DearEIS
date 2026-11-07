@@ -47,7 +47,10 @@ from deareis.data import (
     SimulationResult,
     KramersKronigResult,
 )
-from deareis.config.defaults import DEFAULT_COLORS
+from deareis.config.defaults import (
+    DEFAULT_COLORS,
+    SUBCIRCUIT_OFFSETS,
+)
 from deareis.enums import PlotType
 
 
@@ -180,8 +183,8 @@ def plot(
         Only applies to circuit fits in Nyquist plots of the impedance.
 
     subcircuit_offset: str, optional
-        Where the contributions of the components are placed on the real axis ('none' or 'series_resistance').
-        See :func:`~pyimpspec.mpl.plot_subcircuits`.
+        Where the contributions of the components are placed on the real axis ('none', 'series_resistance', 'cumulative_dc', or 'peak').
+        See :meth:`~pyimpspec.Circuit.get_subcircuit_impedances`.
 
     Returns
     -------
@@ -219,7 +222,7 @@ def plot(
     assert type(grid) is bool, grid
     assert type(tight_layout) is bool, tight_layout
     assert type(subcircuits) is bool, subcircuits
-    assert subcircuit_offset in ("none", "series_resistance"), subcircuit_offset
+    assert subcircuit_offset in SUBCIRCUIT_OFFSETS, subcircuit_offset
     assert type(figure) is Figure or figure is None
     axis: Axes
     if figure is None:

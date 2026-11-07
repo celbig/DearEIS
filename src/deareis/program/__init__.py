@@ -850,20 +850,40 @@ def copy_plot_data(*args, **kwargs):
 
     elif type(plot) is Impedance:
         for series in plot.get_series():
+            subcircuit: bool = series.get("subcircuit", False)
+            if subcircuit and admittance is True:
+                continue  # Contributions in series do not add up as admittances
+
             label = "Data"
             if context != Context.PLOTTING_TAB:
-                if series.get("simulation", False):
+                if subcircuit:
+                    label = series["component"]
+                elif series.get("simulation", False):
                     label = "Sim."
                 elif series.get("fit", False):
                     label = "Fit"
+                    if series.get("line", False):
+                        label += " (line)"
+                    else:
+                        label += " (scatter)"
             else:
                 label = series.get("label") or ""
 
-            dictionary[f"f (Hz) - {label}"] = series["frequencies"]
+            key = f"f (Hz) - {label}"
+            while key in dictionary:
+                label += " "
+                key = f"f (Hz) - {label}"
+
+            dictionary[key] = series["frequencies"]
             if admittance is True:
                 Y = series["impedances"] ** -1
                 dictionary[f"Re(Y) (S) - {label}"] = Y.real
                 dictionary[f"Im(Y) (S) - {label}"] = Y.imag
+            elif subcircuit:
+                # The real parts of the contributions are cumulative
+                Z = series["impedances"]
+                dictionary[f"Cumulative Re(Z) (ohm) - {label}"] = Z.real
+                dictionary[f"-Im(Z) (ohm) - {label}"] = -Z.imag
             else:
                 Z = series["impedances"]
                 dictionary[f"Re(Z) (ohm) - {label}"] = Z.real

@@ -99,12 +99,31 @@ Show the contribution of each component that is connected in series in the circu
 
 The impedances of components in series add up, so the contributions sum up to the impedance of the whole circuit.
 
+The names of the elements in the table of parameters and the title bars of the nodes in the circuit preview are colored like the contributions that they belong to.
+
 Not available when plotting admittance.
     """.strip(),
         "subcircuit_offset": """
 Choose where the contributions are placed on the real axis:
 - No offset: each contribution starts from the origin and the values are exact. Resistors in series are shown as single points.
-- Series R offset: the sum of the resistors in series (e.g., the ohmic resistance) is added to the real part of the other contributions and the resistors are not shown separately.
+- Series R offset: the sum of the resistors in series (e.g., the ohmic resistance) is added to the real part of the other contributions.
+- Cumulative R (DC): the resistors in series and the zero-frequency resistances of the faster components (i.e., those with higher characteristic frequencies) are added. Each arc starts where it would start if the time constants were well separated.
+- Peak-aligned: the real parts of all of the other components at the frequency of the apex of an arc are added. The apex of each arc is placed at the same real value as the fit at that frequency, even when arcs overlap.
+
+The offsets only shift the real part, so the shapes of the contributions are preserved but they no longer sum up to the fit. Resistors in series are not shown separately when using an offset.
+
+The height of a peak in the data may be greater than that of the corresponding arc when arcs overlap since the other components also contribute to the imaginary part.
+    """.strip(),
+        "impedance_subcircuits": """
+Show the contribution of each component that is connected in series in the circuit (e.g., R, (RC), and (RW) for R(RC)(RW)).
+
+The imaginary parts are exact and sum up to the imaginary part of the fit.
+
+The real parts are cumulative: the components are sorted from the fastest to the slowest (i.e., by decreasing characteristic frequency) and each curve includes the resistors in series and the real parts of the faster components. Each step thus shows the resistance of a process and the last curve is the real part of the fit.
+
+The names of the elements in the table of parameters and the title bars of the nodes in the circuit preview are colored like the contributions that they belong to.
+
+Not available when plotting admittance.
     """.strip(),
         "delete": """
 Delete the current fit result.

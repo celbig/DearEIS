@@ -160,9 +160,24 @@ class Impedance(Plot):
             self._series[index].update(kwargs)
             dpg.set_value(series_1, [list(freq), list(real)])
             dpg.set_value(series_2, [list(freq), list(imag)])
-            dpg.show_item(series_1)
-            dpg.show_item(series_2)
+            if self._series[index].get("subcircuit", False) and self._admittance:
+                # Contributions in series do not add up as admittances
+                dpg.hide_item(series_1)
+                dpg.hide_item(series_2)
+            else:
+                dpg.show_item(series_1)
+                dpg.show_item(series_2)
             break
+
+    def delete_series(self, index: int):
+        assert type(index) is int and index >= 0, index
+        assert len(self._series) > index, (
+            index,
+            len(self._series),
+        )
+        dpg.delete_item(dpg.get_item_children(self._y_axis_1, slot=1)[index])
+        dpg.delete_item(dpg.get_item_children(self._y_axis_2, slot=1)[index])
+        self._series.pop(index)
 
     def plot(self, *args, **kwargs) -> Tuple[int, int]:
         assert len(args) == 0, args
@@ -176,6 +191,7 @@ class Impedance(Plot):
         line: bool = kwargs.get("line", False)
         show_labels: bool = kwargs.get("show_labels", True)
         themes: Optional[Tuple[int, int]] = kwargs.get("themes")
+        subcircuit: bool = kwargs.get("subcircuit", False)
 
         assert type(freq) is ndarray, freq
         assert type(real) is ndarray, real
@@ -186,6 +202,7 @@ class Impedance(Plot):
         assert type(line) is bool, line
         assert (type(themes) is tuple and len(themes) == 2) or themes is None, themes
         assert type(show_labels) is bool, show_labels
+        assert type(subcircuit) is bool, subcircuit
 
         self._series.append(kwargs)
         func: Callable = dpg.add_scatter_series if not line else dpg.add_line_series
@@ -205,6 +222,10 @@ class Impedance(Plot):
         if themes is not None:
             dpg.bind_item_theme(tag_real, themes[0])
             dpg.bind_item_theme(tag_imag, themes[1])
+
+        if subcircuit and self._admittance:
+            dpg.hide_item(tag_real)
+            dpg.hide_item(tag_imag)
 
         return (
             tag_real,

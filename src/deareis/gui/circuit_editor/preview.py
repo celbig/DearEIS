@@ -18,16 +18,22 @@
 # the LICENSES folder.
 
 from typing import (
+    Dict,
     List,
     Optional,
 )
 import dearpygui.dearpygui as dpg
-from pyimpspec import Circuit
+from pyimpspec import (
+    Circuit,
+    Element,
+)
+import deareis.themes as themes
 from deareis.gui.circuit_editor.parser import (
     Node,
     Parser,
 )
 from deareis.typing.helpers import Tag
+from deareis.utility import get_subcircuit_color_indices
 
 
 DPG_VERSION_1: bool = dpg.get_dearpygui_version().startswith("1.")
@@ -44,15 +50,19 @@ class CircuitPreview:
             minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
         )
         self.parser: Parser = Parser(self.node_editor)
+        self.circuit: Optional[Circuit] = None
 
     def clear(self):
         dpg.delete_item(self.node_editor, children_only=True)
+        self.circuit = None
 
     def update(self, circuit: Optional[Circuit]):
         self.parser.unblock_linking()
         self.clear()
         if circuit is None:
             return
+
+        self.circuit = circuit
         self.parser.circuit_to_nodes(
             circuit,
             y_step=50 if DPG_VERSION_1 else 70,
@@ -63,3 +73,26 @@ class CircuitPreview:
         node: Node
         for node in nodes:
             node.set_preview()
+
+    def set_subcircuit_colors(self, offset: Optional[str]):
+        """
+        Color the title bars of the nodes based on the contributions that the elements belong to
+        (i.e., the colors used when plotting the contributions of the components in series).
+        The default theme is used for all nodes if the offset is None.
+        """
+        if self.circuit is None:
+            return
+
+        indices: Dict[Element, int] = {}
+        if offset is not None:
+            indices = get_subcircuit_color_indices(self.circuit, offset=offset)
+
+        node_themes: List[int] = themes.subcircuits.nodes
+        node: Node
+        for node in self.parser.nodes:
+            if node.element in indices:
+                theme: int = node_themes[indices[node.element] % len(node_themes)]
+            else:
+                theme = themes.circuit_editor.preview_node
+
+            dpg.bind_item_theme(node.tag, theme)
