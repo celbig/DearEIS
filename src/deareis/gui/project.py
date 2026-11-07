@@ -33,7 +33,10 @@ from deareis.gui.overview import OverviewTab
 from deareis.gui.plotting import PlottingTab
 from deareis.gui.simulation import SimulationTab
 from deareis.gui.zhit import ZHITTab
-from deareis.signals import Signal
+from deareis.signals import (
+    GUI_CONSTRUCTION_LOCK,
+    Signal,
+)
 import deareis.signals as signals
 from deareis.enums import (
     PlotType,
@@ -58,6 +61,19 @@ import deareis.themes as themes
 from deareis.keybindings import Context
 from deareis.utility import pad_tab_labels
 from deareis.typing.helpers import Tag
+
+
+def run_queued_update(tab):
+    if not hasattr(tab, "queued_update") or tab.queued_update is None:
+        return
+    # Postpone the update (it remains queued and the visibility handler will
+    # try again during the next frame) if another thread is building the GUI.
+    if not GUI_CONSTRUCTION_LOCK.acquire(blocking=False):
+        return
+    try:
+        tab.queued_update()
+    finally:
+        GUI_CONSTRUCTION_LOCK.release()
 
 
 class ProjectTab:
@@ -88,8 +104,7 @@ class ProjectTab:
                     height=dpg.get_viewport_client_height(),
                 )
                 
-                if hasattr(tab, "queued_update") and tab.queued_update is not None:
-                    tab.queued_update()
+                run_queued_update(tab)
 
             self.tab_bar: Tag = dpg.generate_uuid()
             with dpg.tab_bar(
@@ -138,8 +153,7 @@ class ProjectTab:
                     return
                 elif not tab.is_visible():
                     return
-                elif hasattr(tab, "queued_update") and tab.queued_update is not None:
-                    tab.queued_update()
+                run_queued_update(tab)
 
             for tab in self.tab_lookup.values():
                 if not (hasattr(tab, "is_visible") and hasattr(tab, "visibility_item")):

@@ -17,6 +17,7 @@
 # The licenses of DearEIS' dependencies and/or sources of portions of code are included in
 # the LICENSES folder.
 
+from threading import RLock
 from traceback import format_exc
 from enum import (
     IntEnum,
@@ -33,6 +34,15 @@ from typing import (
 
 
 DEBUG: bool = False
+
+# DearPyGui's container stack is shared by all threads. If two threads create
+# or delete items at the same time (e.g., a project is loaded or closed in one
+# thread while a visibility handler updates a tab in DearPyGui's callback
+# thread), then items can end up in the wrong container ("Incompatible child"),
+# which can even crash DearPyGui. Signals are handled while holding this lock,
+# and code that can postpone its work (e.g., queued updates of tabs) only tries
+# to acquire it.
+GUI_CONSTRUCTION_LOCK: RLock = RLock()
 
 
 class Signal(IntEnum):
@@ -136,6 +146,11 @@ _QUEUE: Optional[Dict[Signal, List[Tuple[tuple, dict]]]] = {}
 
 
 def emit(signal: Signal, *args, **kwargs):
+    with GUI_CONSTRUCTION_LOCK:
+        _emit(signal, *args, **kwargs)
+
+
+def _emit(signal: Signal, *args, **kwargs):
     assert type(signal) is Signal, signal
     
     if _QUEUE is not None and signal not in _REGISTERED_CALLBACKS:
