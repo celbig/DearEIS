@@ -13,6 +13,7 @@ The layout of the **Simulation** tab (:numref:`simulation_tab`) is similar to th
 However, the purpose of the **Simulation** tab is to provide a means to simulate impedance spectra of circuits within an arbitrary range of frequencies.
 The simulated impedance spectra can be loaded as data sets, which means that they can then be subjected to the various forms of analysis included in DearEIS.
 The **Simulation** tab can thus be very useful for teaching, demonstration, and development purposes.
+Equivalent circuits can be entered in the same ways as in the **Fitting** tab, including importing ZView circuit models (``.mdl`` files) with the **Load** button.
 
 .. _simulation_tab:
 .. figure:: https://raw.githubusercontent.com/wiki/vyrjana/DearEIS/images/simulation-tab.png

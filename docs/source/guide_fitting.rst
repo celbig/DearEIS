@@ -78,6 +78,16 @@ If parameter limits are completely omitted, then the default values are used (e.
 
 The valid symbols are listed in the **Elements** tab found within the **Diagram** tab of the **Circuit editor** window.
 
+Equivalent circuits that were created in ZView can also be imported from ``.mdl`` files by clicking on the **Load** button next to the circuit input.
+The names of the elements in ZView are used as labels, and the values and fixed/free status of the parameters are retained.
+Some ZView elements are defined differently than the corresponding elements in DearEIS (e.g., the QPE, Ws, Wo, and Ls elements), in which case the parameter values are converted so that the impedance remains the same.
+The other settings (e.g., the fitting method and the weight) are not changed when a circuit is imported.
+
+.. note::
+
+   The following ZView elements are supported: R, C, L, CPE, QPE, GE, Ws, Wo, Ls, and Lo (only if Phi = 1, in which case it is converted to a Gerischer element).
+   Distributed elements (DE and DX), element followers, multipliers, and the frequency range elements are not supported.
+
 Alternatively, nodes representing the circuit elements can be added to the node editor and connected together to form an equivalent circuit.
 Circuit elements can be added to the node editor by clicking on a type of element in the **Elements** tab or by dragging a type of element from the **Elements** tab and onto the node editor.
 The nodes can be linked together by clicking and dragging between the terminals of the nodes  (i.e., the yellow dots on either side of a node).

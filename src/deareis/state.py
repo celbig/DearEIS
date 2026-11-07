@@ -83,6 +83,7 @@ class State:
         self.program_window: ProgramWindow = ProgramWindow()
         self.latest_project_directory: str = getcwd()
         self.latest_data_set_directory: str = getcwd()
+        self.latest_circuit_directory: str = getcwd()
         self.latest_plot_directory: str = getcwd()
         self.projects: List[Project] = []
         self.project_tabs: Dict[str, ProjectTab] = {}

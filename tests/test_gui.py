@@ -48,6 +48,7 @@ from pyimpspec.analysis.zhit.weights import (
 from pyimpspec import (
     get_elements,
     parse_cdc,
+    parse_mdl,
 )
 import dearpygui.dearpygui as dpg
 from deareis.utility import calculate_window_position_dimensions
@@ -93,6 +94,8 @@ from deareis.utility import sleep
 
 
 PARENT_FOLDER: str = dirname(__file__)
+MDL_PATH: str = join(PARENT_FOLDER, "zview-supported.mdl")
+INVALID_MDL_PATH: str = join(PARENT_FOLDER, "zview-all-elements.mdl")
 TMP_FOLDER: str = gettempdir()
 TMP_PROJECT: str = join(TMP_FOLDER, "deareis_temporary_test_project.json")
 
@@ -837,7 +840,28 @@ Element & Parameter & Value & Unit \\
         sleep(0.5)
         editor.callback(dpg.get_item_user_data(editor.accept_button))
 
+    previous_settings: List[SimulationSettings] = []
+
     @next_step(circuit_editor)
+    def validate_load_circuit_file():
+        assert STATE.is_project_dirty(project) is False
+        settings = project_tab.get_simulation_settings()
+        assert settings.cdc == parse_mdl(MDL_PATH).serialize(), settings.cdc
+        assert settings.min_frequency == previous_settings[0].min_frequency
+        assert settings.max_frequency == previous_settings[0].max_frequency
+        assert settings.num_per_decade == previous_settings[0].num_per_decade
+
+    @next_step(validate_load_circuit_file)
+    def load_circuit_file():
+        print("  - Load circuit file")
+        previous_settings.append(project_tab.get_simulation_settings())
+        signals.emit(
+            Signal.LOAD_CIRCUIT_FILE,
+            paths=[MDL_PATH],
+            context=Context.SIMULATION_TAB,
+        )
+
+    @next_step(load_circuit_file)
     def cycle_data_sets():
         print("  - Cycle data sets")
         perform_action(action=Action.NEXT_PRIMARY_RESULT)
@@ -1857,7 +1881,48 @@ Element & Parameter & Value & Std. err. (\%) & Unit & Fixed \\
         sleep(0.5)
         editor.callback(dpg.get_item_user_data(editor.accept_button))
 
+    previous_settings: List[FitSettings] = []
+
     @next_step(circuit_editor)
+    def validate_load_circuit_file():
+        assert STATE.is_project_dirty(project) is False
+        settings = project_tab.get_fit_settings()
+        circuit = parse_cdc(settings.cdc)
+        assert circuit.to_string() == "[(RR)CLQQGWsWoLsG]", circuit.to_string()
+        assert settings.cdc == parse_mdl(MDL_PATH).serialize(), settings.cdc
+        assert [element.get_label() for element in circuit.get_elements()][:3] == [
+            "R2",
+            "R1",
+            "C1",
+        ]
+        assert settings.method == previous_settings[0].method
+        assert settings.weight == previous_settings[0].weight
+        assert settings.max_nfev == previous_settings[0].max_nfev
+
+    @next_step(validate_load_circuit_file)
+    def load_circuit_file():
+        print("  - Load circuit file")
+        signals.emit(
+            Signal.LOAD_CIRCUIT_FILE,
+            paths=[MDL_PATH],
+            context=Context.FITTING_TAB,
+        )
+
+    @next_step(load_circuit_file)
+    def load_invalid_circuit_file():
+        print("  - Load invalid circuit file")
+        previous_settings.append(project_tab.get_fit_settings())
+        signals.emit(
+            Signal.LOAD_CIRCUIT_FILE,
+            paths=[INVALID_MDL_PATH],
+            context=Context.FITTING_TAB,
+        )
+        sleep(0.5)
+        assert STATE.program_window.error_message.is_visible()
+        STATE.program_window.error_message.hide()
+        assert project_tab.get_fit_settings() == previous_settings[0]
+
+    @next_step(load_invalid_circuit_file)
     def cycle_data_sets():
         print("  - Cycle data sets")
         perform_action(action=Action.NEXT_PRIMARY_RESULT)
