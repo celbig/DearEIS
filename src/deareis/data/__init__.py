@@ -40,6 +40,7 @@ from .plotting import (
 )
 from .drt import (
     DRTPeakAnalysis,
+    DRTPeakSeries,
     DRTPeakSettings,
     DRTResult,
     DRTSettings,

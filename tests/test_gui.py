@@ -1035,6 +1035,65 @@ def test_drt_tab():
             assert validate(text), (output, text)
 
     @next_step(validate_copy_peaks_outputs)
+    def validate_peak_display_options():
+        drt_tab = project_tab.drt_tab
+        section = drt_tab.peak_analysis_section
+        drt = project_tab.get_active_drt()
+        analysis = drt.peak_analysis
+        num_peaks = analysis.get_num_peaks()
+        num_parts = 2  # BHT
+
+        def count_series() -> int:
+            return len(drt_tab.drt_plot.get_series())
+
+        # Frequency instead of time constants
+        dpg.set_value(drt_tab.toggle_drt_frequency_checkbox, True)
+        drt_tab.toggle_drt_frequency(True)
+        assert section.is_frequency() is True
+        assert dpg.get_value(section.peak_positions_label).strip() == "Positions (Hz)"
+        section.copy_table()
+        text = dpg.get_clipboard_text()
+        assert text.startswith("part\t#\tf (Hz)\tgamma (ohm)\tR_peak (ohm)"), text
+        dpg.set_value(section.peak_positions_input, "1000")
+        positions = section.get_peak_positions()
+        assert len(positions) == 1 and isclose(positions[0], 1 / (2 * 3.141592653589793 * 1000))
+        dpg.set_value(drt_tab.toggle_drt_frequency_checkbox, False)
+        drt_tab.toggle_drt_frequency(False)
+        assert section.is_frequency() is False
+        assert isclose(float(dpg.get_value(section.peak_positions_input)), positions[0], rel_tol=1e-3)
+        dpg.set_value(section.peak_positions_input, "")
+        section.copy_table()
+        assert dpg.get_clipboard_text().startswith("part\t#\ttau (s)\t")
+
+        # Toggle the areas, the sum, and the difference
+        assert count_series() == 2 + num_peaks + num_parts
+        dpg.set_value(section.show_areas_checkbox, False)
+        drt_tab.redraw_peaks()
+        assert count_series() == 2 + num_parts
+        dpg.set_value(section.show_residual_checkbox, True)
+        drt_tab.redraw_peaks()
+        assert count_series() == 2 + num_parts * 2
+        dpg.set_value(section.show_sum_checkbox, False)
+        dpg.set_value(section.show_residual_checkbox, False)
+        drt_tab.redraw_peaks()
+        assert count_series() == 2
+        dpg.set_value(section.show_areas_checkbox, True)
+        dpg.set_value(section.show_sum_checkbox, True)
+        drt_tab.redraw_peaks()
+        assert count_series() == 2 + num_peaks + num_parts
+
+        # Hide a single peak
+        section.toggle_peak("real", 0, False)
+        assert count_series() == 2 + num_peaks - 1 + num_parts
+        section.toggle_peak("real", 0, True)
+        assert count_series() == 2 + num_peaks + num_parts
+
+        # Change the color of a peak
+        section.set_peak_color("real", 0, [1.0, 0.0, 0.0, 0.5])
+        assert analysis.get_peak_color("real", 0) == [255.0, 0.0, 0.0, 127.5]
+        assert "Rel. difference" in dpg.get_value(section._summary)
+
+    @next_step(validate_peak_display_options)
     def validate_analyze_peaks():
         assert STATE.is_project_dirty(project) is True
         drt = project_tab.get_active_drt()

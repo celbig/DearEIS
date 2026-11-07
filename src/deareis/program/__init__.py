@@ -113,9 +113,11 @@ from .drt import (
     analyze_drt_peaks,
     apply_drt_settings,
     clear_drt_peaks,
+    export_drt_peaks,
     delete_drt_result,
     perform_drt,
     select_drt_result,
+    update_drt_peak_colors,
 )
 from .fitting import (
     apply_fit_settings,
@@ -485,16 +487,18 @@ def copy_output(*args, **kwargs):
             or output == DRTOutput.LATEX_PEAKS
             or output == DRTOutput.MARKDOWN_PEAKS
         ):
+            peak_frequency: bool = project_tab.drt_tab.is_drt_frequency()
             peaks_dataframe: DataFrame = drt.to_peak_analysis_dataframe(
                 columns=None
                 if output != DRTOutput.LATEX_PEAKS
                 else [
                     "Part",
                     r"\#",
-                    r"$\tau$ (s)",
+                    r"$f$ (Hz)" if peak_frequency else r"$\tau$ (s)",
                     r"$\gamma$ ($\Omega$)",
                     r"$R_{\rm peak}$ ($\Omega$)",
                 ],
+                frequency=peak_frequency,
             )
             if not peaks_dataframe.empty:
                 if output == DRTOutput.CSV_PEAKS:
@@ -789,18 +793,32 @@ def copy_plot_data(*args, **kwargs):
     elif type(plot) is DRT:
         for series in plot.get_series():
             if "peak" in series:
-                # Peaks fitted to the DRT: one column per peak and one for their sum.
+                # Peaks fitted to the DRT: one column per peak, one for their sum,
+                # and one for the difference between the DRT and the sum.
                 part: str = f", {series['part']}" if series.get("part") else ""
-                dictionary[
-                    ("f (Hz)" if frequency else "tau (s)")
-                    + f" - Peaks{part}"
-                ] = (1 / (2 * pi * series["tau"])) if frequency else series["tau"]
+                group: str = series.get("group") or ""
+                if group != "":
+                    group += ", "
+
+                x_label: str = "f (Hz)" if frequency else "tau (s)"
+                x_values = (1 / (2 * pi * series["tau"])) if frequency else series["tau"]
+                if series["peak"] == -2:
+                    # The difference is evaluated at the time constants of the DRT.
+                    dictionary[f"{x_label} - {group}Difference{part}"] = x_values
+                    dictionary[f"gamma (ohm) - {group}Difference{part}"] = series[
+                        "gamma"
+                    ]
+                    continue
+
+                dictionary[f"{x_label} - {group}Peaks{part}"] = x_values
                 if series["peak"] >= 0:
                     dictionary[
-                        f"gamma (ohm) - Peak {series['peak'] + 1}{part}"
+                        f"gamma (ohm) - {group}Peak {series['peak'] + 1}{part}"
                     ] = series["upper"]
                 else:
-                    dictionary[f"gamma (ohm) - Sum of peaks{part}"] = series["gamma"]
+                    dictionary[f"gamma (ohm) - {group}Sum of peaks{part}"] = series[
+                        "gamma"
+                    ]
 
                 continue
 
@@ -1117,6 +1135,8 @@ def initialize_program(args: Namespace):
     signals.register(Signal.APPLY_DRT_SETTINGS, apply_drt_settings)
     signals.register(Signal.ANALYZE_DRT_PEAKS, analyze_drt_peaks)
     signals.register(Signal.CLEAR_DRT_PEAKS, clear_drt_peaks)
+    signals.register(Signal.EXPORT_DRT_PEAKS, export_drt_peaks)
+    signals.register(Signal.UPDATE_DRT_PEAK_COLORS, update_drt_peak_colors)
 
     # Signals for the fitting tab
     signals.register(Signal.PERFORM_FIT, perform_fit)

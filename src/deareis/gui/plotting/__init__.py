@@ -28,7 +28,10 @@ from typing import (
     Tuple,
     Union,
 )
-from numpy import ndarray
+from numpy import (
+    ndarray,
+    zeros_like,
+)
 import dearpygui.dearpygui as dpg
 import deareis.themes as themes
 from deareis.tooltips import attach_tooltip
@@ -41,6 +44,7 @@ from deareis.enums import (
     plot_type_to_label,
 )
 from deareis.data import (
+    DRTPeakSeries,
     DRTResult,
     DataSet,
     FitResult,
@@ -994,7 +998,9 @@ class DRTResultGroup:
         assert type(data) is DataSet, data
         assert type(settings) is PlotSettings, settings
 
-        drt_hash: str = ",".join([_.uuid for _ in drts])
+        drt_hash: str = ",".join(
+            [_.uuid + ("+peaks" if _.peak_analysis is not None else "") for _ in drts]
+        )
         if drt_hash == self.drt_hash:
             return False
 
@@ -1002,28 +1008,37 @@ class DRTResultGroup:
         self.drt_hash = drt_hash
         dpg.set_item_label(self.header, data.get_label())
 
-        drt: DRTResult
-        for drt in drts:
+        series: List[Union[DRTResult, DRTPeakSeries]] = self.get_series(drts)
+        ser: Union[DRTResult, DRTPeakSeries]
+        for ser in series:
+            drt: DRTResult = ser if type(ser) is DRTResult else ser.drt
             with dpg.table_row(
                 filter_key=f"{data.get_label().lower()} {drt.get_label().lower()}",
                 parent=self.table,
             ):
                 dpg.add_checkbox(
-                    default_value=drt.uuid in settings.series_order,
+                    default_value=ser.uuid in settings.series_order,
                     callback=lambda s, a, u: signals.emit(
                         Signal.TOGGLE_PLOT_SERIES, enabled=a, **u
                     ),
                     user_data={
-                        "drts": [drt],
+                        "drts": [ser],
                         "settings": settings,
                     },
                 )
-                dpg.add_text(drt.get_label())
-                attach_tooltip(drt.get_label())
+                if type(ser) is DRTResult:
+                    dpg.add_text(ser.get_label())
+                    attach_tooltip(ser.get_label())
+                else:
+                    dpg.add_text(f"   - {ser.get_kind_label()}")
+                    attach_tooltip(
+                        f"{ser.get_label()}\n\n"
+                        + tooltips.plotting.drt_peak_series
+                    )
 
         dpg.configure_item(
             self.table,
-            height=TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT * max(1, len(drts)),
+            height=TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT * max(1, len(series)),
         )
         dpg.show_item(self.header)
 
@@ -1046,18 +1061,37 @@ class DRTResultGroup:
 
         self.active_hash = active_hash
 
-        drt: DRTResult
+        ser: Union[DRTResult, DRTPeakSeries]
         row: int
-        for drt, row in zip(drts, dpg.get_item_children(self.table, slot=1)):
+        for ser, row in zip(
+            self.get_series(drts),
+            dpg.get_item_children(self.table, slot=1),
+        ):
             cells: List[Tag] = dpg.get_item_children(row, slot=1)
             dpg.configure_item(
                 cells[0],
-                default_value=drt.uuid in settings.series_order,
+                default_value=ser.uuid in settings.series_order,
                 user_data={
-                    "drts": [drt],
+                    "drts": [ser],
                     "settings": settings,
                 },
             )
+
+    @staticmethod
+    def get_series(drts: List[DRTResult]) -> List[Union[DRTResult, DRTPeakSeries]]:
+        # Each DRT result is followed by the series of its peak analysis (if any).
+        series: List[Union[DRTResult, DRTPeakSeries]] = []
+        drt: DRTResult
+        for drt in drts:
+            series.append(drt)
+            if drt.peak_analysis is None:
+                continue
+
+            kind: str
+            for kind in ("peaks", "sum", "residual"):
+                series.append(DRTPeakSeries(drt, kind))
+
+        return series
 
     def filter(self, string: str, collapse: bool) -> List[DRTResult]:
         assert type(string) is str, string
@@ -1815,6 +1849,8 @@ class ActiveSeries:
     ) -> Optional[DataSet]:
         if not hasattr(series, "uuid"):
             return None
+        elif type(series) is DRTPeakSeries:
+            series = series.drt
 
         all_results: dict = {
             KramersKronigResult: tests,
@@ -1879,6 +1915,19 @@ class ActiveSeries:
         )
         series.extend(
             filter(
+                lambda _: type(_) is DRTPeakSeries
+                and _.uuid in settings.series_order,
+                DRTResultGroup.get_series(
+                    [
+                        _
+                        for _ in chain(*list(drts.values()))
+                        if _.peak_analysis is not None
+                    ]
+                ),
+            )
+        )
+        series.extend(
+            filter(
                 lambda _: _.uuid in settings.series_order,
                 list(chain(*list(fits.values()))),
             )
@@ -1903,6 +1952,10 @@ class ActiveSeries:
             DRTResult: (
                 "DRT",
                 "DRT analysis",
+            ),
+            DRTPeakSeries: (
+                "Peaks",
+                "DRT peak analysis",
             ),
             FitResult: (
                 "Fit",
@@ -2034,6 +2087,7 @@ class PlottingTab:
     def __init__(self, state):
         self.state = state
         self.series_tags: Dict[str, int] = {}
+        self.peak_themes: Dict[Tuple[float, ...], int] = {}
         self.queued_update: Optional[Callable] = None
         self.plotted_uuid: str = ""
         self.plot_types: Dict[PlotType, Plot] = {}
@@ -2540,6 +2594,20 @@ class PlottingTab:
                 label = series.get_label()
                 show_label = False
 
+            if type(series) is DRTPeakSeries:
+                # Only applicable to plots of distributions of relaxation times.
+                if plot_type in (PlotType.DRT, PlotType.DRT_FREQUENCY):
+                    self.plot_drt_peak_series(
+                        plot,
+                        series,
+                        label=label,
+                        show_label=show_label,
+                        theme=settings.get_series_theme(uuid),
+                        color=settings.get_series_color(uuid),
+                    )
+
+                continue
+
             is_simulation = type(series) is SimulationResult
             is_fit = (
                 type(series) is FitResult
@@ -2818,6 +2886,78 @@ class PlottingTab:
             from_empty or changed_plot_settings
         ):
             plot.queue_limits_adjustment()
+
+    def plot_drt_peak_series(
+        self,
+        plot: Plot,
+        series: DRTPeakSeries,
+        label: str,
+        show_label: bool,
+        theme: int,
+        color: List[float],
+    ):
+        has_imaginary: bool = series.has_imaginary()
+        analysis = series.peak_analysis
+        first: bool = True
+        part: str
+        index: int
+        tau: ndarray
+        gammas: ndarray
+        for part, index, tau, gammas in series.get_curves():
+            suffix: str = f", {part}" if has_imaginary else ""
+            kwargs: dict = {
+                "peak": index,
+                "part": part if has_imaginary else "",
+                "group": label,
+            }
+            tag: int
+            if index >= 0:
+                # The areas of the peaks use the colors chosen in the DRT tab.
+                key: Tuple[float, ...] = tuple(analysis.get_peak_color(part, index))
+                if key not in self.peak_themes:
+                    self.peak_themes[key] = themes.create_plot_series_theme(
+                        list(key),
+                        dpg.mvPlotMarker_Circle,
+                    )
+
+                tag = plot.plot(
+                    tau=tau,
+                    lower=zeros_like(tau),
+                    upper=gammas,
+                    label=label,
+                    show_label=show_label and first,
+                    theme=self.peak_themes[key],
+                    **kwargs,
+                )
+            else:
+                if part == "imag.":
+                    # Use a lighter version of the series color for the imaginary part.
+                    alt_color: List[float] = color.copy()
+                    alt_color[-1] = max(alt_color[-1] * 0.5, 64.0)
+                    key = tuple(alt_color)
+                    if key not in self.peak_themes:
+                        self.peak_themes[key] = themes.create_plot_series_theme(
+                            list(key),
+                            dpg.mvPlotMarker_Circle,
+                        )
+
+                    series_theme: Optional[int] = self.peak_themes[key]
+                else:
+                    series_theme = theme if theme >= 0 else None
+
+                tag = plot.plot(
+                    tau=tau,
+                    gamma=gammas,
+                    label=f"{label}{suffix}" if has_imaginary else label,
+                    line=True,
+                    theme=series_theme,
+                    show_label=show_label,
+                    **kwargs,
+                )
+
+            if first:
+                self.series_tags[series.uuid] = tag
+                first = False
 
     def set_series_label(self, uuid: str, label: Optional[str]):
         assert type(uuid) is str, uuid

@@ -34,9 +34,11 @@ from numpy import (
     integer,
     issubdtype,
     ndarray,
+    pi,
 )
 from pyimpspec.plot import mpl
 from deareis.data import (
+    DRTPeakSeries,
     DRTResult,
     DataSet,
     FitResult,
@@ -47,6 +49,54 @@ from deareis.data import (
 )
 from deareis.config.defaults import DEFAULT_COLORS
 from deareis.enums import PlotType
+
+
+def _plot_drt_peak_series(
+    series: DRTPeakSeries,
+    axis: Axes,
+    color: List[float],
+    label: Optional[str],
+    frequency: bool,
+):
+    has_imaginary: bool = series.has_imaginary()
+    analysis = series.peak_analysis
+    first: bool = True
+    part: str
+    index: int
+    tau: ndarray
+    gammas: ndarray
+    for part, index, tau, gammas in series.get_curves():
+        x: ndarray = (1 / (2 * pi * tau)) if frequency else tau
+        if index >= 0:
+            axis.fill_between(
+                x,
+                0.0,
+                gammas,
+                color=[_ / 255.0 for _ in analysis.get_peak_color(part, index)],
+                linewidth=0.0,
+                label=label if (first and label) else None,
+            )
+            first = False
+            continue
+
+        curve_label: Optional[str] = label or None
+        if curve_label is not None and has_imaginary:
+            curve_label += f", {part}"
+
+        axis.plot(
+            x,
+            gammas,
+            color=color,
+            linestyle="--" if part == "imag." else "-",
+            label=curve_label,
+        )
+
+    axis.set_xscale("log")
+    if axis.get_xlabel() == "":
+        axis.set_xlabel(r"$f\ (\mathrm{Hz})$" if frequency else r"$\tau\ (\mathrm{s})$")
+
+    if axis.get_ylabel() == "":
+        axis.set_ylabel(r"$\gamma\ (\Omega)$")
 
 
 MPL_MARKERS: Dict[int, str] = {
@@ -214,7 +264,13 @@ def plot(
             continue
 
         # Filter out stuff that cannot be plotted
-        if plot_type == PlotType.DRT and type(series) is not DRTResult:
+        is_drt_plot: bool = plot_type in (PlotType.DRT, PlotType.DRT_FREQUENCY)
+        if plot_type == PlotType.DRT and type(series) not in (
+            DRTResult,
+            DRTPeakSeries,
+        ):
+            continue
+        elif type(series) is DRTPeakSeries and not is_drt_plot:
             continue
 
         selected_series.append(
@@ -361,7 +417,15 @@ def plot(
                 )
 
         elif plot_type in (PlotType.DRT, PlotType.DRT_FREQUENCY):
-            if isinstance(series, DRTResult):
+            if isinstance(series, DRTPeakSeries):
+                _plot_drt_peak_series(
+                    series,
+                    axis=axis,
+                    color=color,
+                    label=label,
+                    frequency=plot_type == PlotType.DRT_FREQUENCY,
+                )
+            elif isinstance(series, DRTResult):
                 mpl.plot_gamma(
                     series,
                     colors={"gamma": color},

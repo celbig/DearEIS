@@ -24,16 +24,21 @@ from typing import (
     Dict,
     List,
     Optional,
+    Set,
+    Tuple,
     Union,
 )
 from numpy import (
     allclose,
     array,
     complex128,
+    isnan,
     log10 as log,
     ndarray,
+    pi,
     zeros_like,
 )
+from pandas import DataFrame
 from pyimpspec.exceptions import DRTError
 from pyimpspec import (
     ComplexImpedances,
@@ -1386,8 +1391,24 @@ DEFAULT_DRT_PEAK_SETTINGS: DRTPeakSettings = DRTPeakSettings(
 
 
 class PeakAnalysisSection:
-    def __init__(self, label_pad: int):
+    def __init__(self, label_pad: int, redraw: Callable[[], None]):
         default_settings: DRTPeakSettings = DEFAULT_DRT_PEAK_SETTINGS
+        self._redraw: Callable[[], None] = redraw
+        self._frequency: bool = False
+        self._drt: Optional[DRTResult] = None
+        self._data: Optional[DataSet] = None
+        # Peaks (DRT UUID, part, index) whose areas have been hidden by the user
+        self._hidden_peaks: Set[Tuple[str, str, int]] = set()
+        self._label_pad: int = label_pad
+        self._color_edit_handler: Tag = dpg.generate_uuid()
+        with dpg.item_handler_registry(tag=self._color_edit_handler):
+            dpg.add_item_deactivated_after_edit_handler(
+                callback=lambda s, a, u: signals.emit(
+                    Signal.UPDATE_DRT_PEAK_COLORS,
+                    drt=self._drt,
+                )
+            )
+
         self._header: Tag = dpg.generate_uuid()
         with dpg.collapsing_header(
             label=" Peak analysis",
@@ -1423,7 +1444,11 @@ class PeakAnalysisSection:
                 )
 
             with dpg.group(horizontal=True):
-                dpg.add_text("Positions (s)".rjust(label_pad))
+                self.peak_positions_label: Tag = dpg.generate_uuid()
+                dpg.add_text(
+                    self._get_positions_label(),
+                    tag=self.peak_positions_label,
+                )
                 attach_tooltip(tooltips.drt.peak_positions)
 
                 self.peak_positions_input: Tag = dpg.generate_uuid()
@@ -1479,32 +1504,83 @@ class PeakAnalysisSection:
                 )
                 attach_tooltip(tooltips.drt.clear_peaks)
 
-            self._summary: Tag = dpg.generate_uuid()
-            dpg.add_text("", show=False, wrap=330, tag=self._summary)
+            self._results_group: Tag = dpg.generate_uuid()
+            with dpg.group(show=False, tag=self._results_group):
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Show".rjust(label_pad))
+                    attach_tooltip(tooltips.drt.show_peaks)
 
-            self._table: Tag = dpg.generate_uuid()
-            with dpg.table(
-                borders_outerV=True,
-                borders_outerH=True,
-                borders_innerV=True,
-                borders_innerH=True,
-                scrollY=True,
-                freeze_rows=1,
-                height=18 + 23,
-                show=False,
-                tag=self._table,
-            ):
-                pass  # The columns are created when the table is populated.
+                    self.show_areas_checkbox: Tag = dpg.generate_uuid()
+                    dpg.add_checkbox(
+                        label="Areas",
+                        default_value=True,
+                        callback=lambda s, a, u: self._redraw(),
+                        tag=self.show_areas_checkbox,
+                    )
+
+                    self.show_sum_checkbox: Tag = dpg.generate_uuid()
+                    dpg.add_checkbox(
+                        label="Sum",
+                        default_value=True,
+                        callback=lambda s, a, u: self._redraw(),
+                        tag=self.show_sum_checkbox,
+                    )
+
+                    self.show_residual_checkbox: Tag = dpg.generate_uuid()
+                    dpg.add_checkbox(
+                        label="Diff.",
+                        default_value=False,
+                        callback=lambda s, a, u: self._redraw(),
+                        tag=self.show_residual_checkbox,
+                    )
+
+                self._summary: Tag = dpg.generate_uuid()
+                dpg.add_text("", wrap=330, tag=self._summary)
+
+                self._table: Tag = dpg.generate_uuid()
+                with dpg.table(
+                    borders_outerV=True,
+                    borders_outerH=True,
+                    borders_innerV=True,
+                    borders_innerH=True,
+                    scrollY=True,
+                    freeze_rows=1,
+                    height=18 + 23,
+                    show=False,
+                    tag=self._table,
+                ):
+                    pass  # The columns are created when the table is populated.
+
+                self._export_group: Tag = dpg.generate_uuid()
+                with dpg.group(horizontal=True, show=False, tag=self._export_group):
+                    dpg.add_text("".rjust(label_pad))
+                    dpg.add_button(
+                        label="Copy table",
+                        callback=lambda s, a, u: self.copy_table(),
+                        width=-110,
+                    )
+                    attach_tooltip(tooltips.drt.copy_peaks_table)
+
+                    dpg.add_button(
+                        label="Save as CSV",
+                        callback=lambda s, a, u: self.save_table(),
+                        width=-1,
+                    )
+                    attach_tooltip(tooltips.drt.save_peaks_table)
 
             dpg.add_spacer(height=8)
 
         self.update_settings()
 
-    def get_peak_positions(self) -> List[float]:
-        text: str = dpg.get_value(self.peak_positions_input).strip()
+    def _get_positions_label(self) -> str:
+        return ("Positions (Hz)" if self._frequency else "Positions (s)").rjust(
+            self._label_pad
+        )
+
+    def _parse_positions(self, text: str) -> List[float]:
         positions: List[float] = []
         token: str
-        for token in re_split(r"[,;\s]+", text):
+        for token in re_split(r"[,;\s]+", text.strip()):
             if token == "":
                 continue
 
@@ -1520,6 +1596,46 @@ class PeakAnalysisSection:
 
         return positions
 
+    def _format_positions(self, time_constants: List[float]) -> str:
+        values: List[float] = [
+            (1.0 / (2 * pi * _)) if self._frequency else _ for _ in time_constants
+        ]
+        return ", ".join(f"{_:.4g}" for _ in values)
+
+    def get_peak_positions(self) -> List[float]:
+        # The positions are always returned as time constants (in seconds).
+        positions: List[float] = self._parse_positions(
+            dpg.get_value(self.peak_positions_input)
+        )
+        if self._frequency:
+            positions = [1.0 / (2 * pi * _) for _ in positions]
+
+        return positions
+
+    def is_frequency(self) -> bool:
+        return self._frequency
+
+    def set_frequency(self, frequency: bool):
+        if frequency == self._frequency:
+            return
+
+        try:
+            positions: Optional[List[float]] = self.get_peak_positions()
+        except ValueError:
+            positions = None  # Leave invalid input as is
+
+        self._frequency = frequency
+        dpg.set_value(self.peak_positions_label, self._get_positions_label())
+        dpg.configure_item(
+            self.peak_positions_input,
+            hint="e.g., 1e3, 10" if frequency else "e.g., 1e-4, 1e-2",
+        )
+        if positions is not None:
+            dpg.set_value(self.peak_positions_input, self._format_positions(positions))
+
+        if self._drt is not None and self._data is not None:
+            self.populate(self._drt, self._data)
+
     def get_settings(self) -> DRTPeakSettings:
         return DRTPeakSettings(
             shape=self.shape_combo.get_value(),
@@ -1534,7 +1650,7 @@ class PeakAnalysisSection:
         dpg.set_value(self.num_peaks_input, settings.num_peaks)
         dpg.set_value(
             self.peak_positions_input,
-            ", ".join(f"{_:.4g}" for _ in settings.peak_positions),
+            self._format_positions(settings.peak_positions),
         )
         dpg.set_value(self.disallow_skew_checkbox, settings.disallow_skew)
         dpg.set_value(self.global_optimization_checkbox, settings.global_optimization)
@@ -1567,20 +1683,113 @@ class PeakAnalysisSection:
 
         signals.emit(Signal.ANALYZE_DRT_PEAKS, settings=settings, **user_data)
 
+    def show_areas(self) -> bool:
+        return dpg.get_value(self.show_areas_checkbox)
+
+    def show_sum(self) -> bool:
+        return dpg.get_value(self.show_sum_checkbox)
+
+    def show_residual(self) -> bool:
+        return dpg.get_value(self.show_residual_checkbox)
+
+    def is_peak_visible(self, drt: DRTResult, part: str, index: int) -> bool:
+        return (drt.uuid, part, index) not in self._hidden_peaks
+
+    def toggle_peak(self, part: str, index: int, state: bool):
+        if self._drt is None:
+            return
+
+        key: Tuple[str, str, int] = (self._drt.uuid, part, index)
+        if state:
+            self._hidden_peaks.discard(key)
+        else:
+            self._hidden_peaks.add(key)
+
+        self._redraw()
+
+    def set_peak_color(self, part: str, index: int, color: List[float]):
+        if self._drt is None or self._drt.peak_analysis is None:
+            return
+
+        self._drt.peak_analysis.set_peak_color(
+            part,
+            index,
+            [float(_) * 255.0 for _ in color],
+        )
+        self._redraw()
+
+    def get_dataframe(self) -> Optional[DataFrame]:
+        if self._drt is None or self._drt.peak_analysis is None:
+            return None
+
+        return self._drt.peak_analysis.to_dataframe(frequency=self._frequency)
+
+    def copy_table(self):
+        dataframe: Optional[DataFrame] = self.get_dataframe()
+        if dataframe is None or dataframe.empty:
+            return
+
+        # Tab-separated values can be pasted directly into spreadsheets.
+        dpg.set_clipboard_text(dataframe.to_csv(sep="\t", index=False))
+
+    def save_table(self):
+        if self._drt is None or self._drt.peak_analysis is None:
+            return
+
+        signals.emit(
+            Signal.EXPORT_DRT_PEAKS,
+            drt=self._drt,
+            data=self._data,
+            frequency=self._frequency,
+        )
+
     def clear(self, hide: bool):
         if hide:
             dpg.hide_item(self._header)
 
+        self._drt = None
+        self._data = None
         dpg.set_item_user_data(self.analyze_button, {})
         dpg.set_item_user_data(self.clear_button, {})
         dpg.disable_item(self.clear_button)
-        dpg.hide_item(self._summary)
+        dpg.hide_item(self._results_group)
         dpg.hide_item(self._table)
+        dpg.hide_item(self._export_group)
         dpg.delete_item(self._table, children_only=True)
 
-    def populate(self, drt: DRTResult, data: DataSet):
+    def _format_summary(self, drt: DRTResult, analysis: DRTPeakAnalysis) -> str:
+        num_peaks: int = analysis.get_num_peaks()
+        shape: str = drt_peak_shape_to_label[analysis.settings.shape]
+        if num_peaks < 1:
+            return f"No peaks found ({shape})."
+
+        lines: List[str] = [
+            f"{num_peaks} peak{'s' if num_peaks != 1 else ''} ({shape})"
+        ]
+        differences: List[str] = []
+        part: str
+        for part, _ in analysis.get_parts():
+            value: float = analysis.get_relative_residual(drt, part)
+            if isnan(value):
+                continue
+
+            label: str = f"{part}: " if analysis.imaginary is not None else ""
+            differences.append(f"{label}{value * 100:.2f} %")
+
+        if differences:
+            lines.append("Rel. difference DRT - peaks: " + ", ".join(differences))
+
+        return "\n".join(lines)
+
+    def populate(self, drt: DRTResult, data: DataSet, frequency: Optional[bool] = None):
+        if frequency is not None and frequency != self._frequency:
+            self._drt = None
+            self.set_frequency(frequency)
+
         self.clear(hide=False)
         dpg.show_item(self._header)
+        self._drt = drt
+        self._data = data
         user_data: dict = {"drt": drt, "data": data}
         dpg.set_item_user_data(self.analyze_button, user_data)
         analysis: Optional[DRTPeakAnalysis] = drt.peak_analysis
@@ -1589,42 +1798,70 @@ class PeakAnalysisSection:
 
         dpg.set_item_user_data(self.clear_button, user_data)
         dpg.enable_item(self.clear_button)
+        dpg.show_item(self._results_group)
+        dpg.set_value(self._summary, self._format_summary(drt, analysis))
         num_peaks: int = analysis.get_num_peaks()
-        shape: str = drt_peak_shape_to_label[analysis.settings.shape]
-        dpg.show_item(self._summary)
         if num_peaks < 1:
-            dpg.set_value(self._summary, f"No peaks found ({shape}).")
             return
 
-        dpg.set_value(
-            self._summary,
-            f"{num_peaks} peak{'s' if num_peaks != 1 else ''} ({shape})",
-        )
-        dataframe = analysis.to_dataframe()
         has_part: bool = analysis.imaginary is not None
+        dpg.add_table_column(label="", width_fixed=True, parent=self._table)
         if has_part:
             dpg.add_table_column(label="Part", width_fixed=True, parent=self._table)
 
         dpg.add_table_column(label="#", width_fixed=True, parent=self._table)
-        for label in ("tau (s)", "gamma (ohm)", "R_peak (ohm)"):
+        label: str
+        for label in (
+            "f (Hz)" if self._frequency else "tau (s)",
+            "gamma (ohm)",
+            "R_peak (ohm)",
+        ):
             dpg.add_table_column(label=label, parent=self._table)
 
-        for row in dataframe.itertuples(index=False):
-            with dpg.table_row(parent=self._table):
-                if has_part:
-                    dpg.add_text(row[0])
-                    row = row[1:]
+        part: str
+        peaks: DRTPeaks
+        for part, peaks in analysis.get_parts():
+            i: int
+            for i, peak in enumerate(peaks.peaks):
+                tau: float = float(peak.get_time_constant())
+                with dpg.table_row(parent=self._table):
+                    with dpg.group(horizontal=True):
+                        dpg.add_checkbox(
+                            default_value=self.is_peak_visible(drt, part, i),
+                            callback=lambda s, a, u: self.toggle_peak(*u, a),
+                            user_data=(part, i),
+                        )
+                        attach_tooltip(tooltips.drt.toggle_peak)
+                        dpg.add_color_edit(
+                            default_value=analysis.get_peak_color(part, i),
+                            alpha_preview=dpg.mvColorEdit_AlphaPreviewHalf,
+                            alpha_bar=True,
+                            no_inputs=True,
+                            no_label=True,
+                            callback=lambda s, a, u: self.set_peak_color(*u, a),
+                            user_data=(part, i),
+                        )
+                        dpg.bind_item_handler_registry(
+                            dpg.last_item(),
+                            self._color_edit_handler,
+                        )
 
-                dpg.add_text(str(int(row[0])))
-                dpg.add_text(f"{row[1]:.3e}")
-                dpg.add_text(f"{row[2]:.3e}")
-                dpg.add_text(f"{row[3]:.3e}")
+                    if has_part:
+                        dpg.add_text(part)
+
+                    dpg.add_text(str(i + 1))
+                    dpg.add_text(
+                        f"{(1.0 / (2 * pi * tau)) if self._frequency else tau:.3e}"
+                    )
+                    dpg.add_text(f"{float(peak.get_height()):.3e}")
+                    dpg.add_text(f"{float(peaks.get_peak_area(i)):.3e}")
 
         dpg.set_item_height(
             self._table,
             18 + 23 * min(num_peaks, 10),
         )
         dpg.show_item(self._table)
+        dpg.show_item(self._export_group)
 
 
 class DRTResultsCombo(ResultsCombo):
@@ -1648,6 +1885,7 @@ class DRTTab:
     def __init__(self, state):
         self.state = state
         self.queued_update: Optional[Callable] = None
+        self._peak_themes: Dict[Tuple[float, ...], int] = {}
         self.create_tab(state)
 
     def create_tab(self, state):
@@ -1775,7 +2013,8 @@ class DRTTab:
                 self.statistics_table: StatisticsTable = StatisticsTable()
                 self.scores_table: ScoresTable = ScoresTable()
                 self.peak_analysis_section: PeakAnalysisSection = PeakAnalysisSection(
-                    label_pad=20
+                    label_pad=20,
+                    redraw=self.redraw_peaks,
                 )
                 self.settings_table: SettingsTable = SettingsTable()
 
@@ -1853,6 +2092,10 @@ class DRTTab:
 
     def toggle_drt_frequency(self, frequency: bool):
         self.drt_plot.set_frequency(frequency)
+        self.peak_analysis_section.set_frequency(frequency)
+
+    def is_drt_frequency(self) -> bool:
+        return dpg.get_value(self.toggle_drt_frequency_checkbox)
 
     def create_nyquist_plot(self):
         with dpg.tab(label="Nyquist"):
@@ -2390,51 +2633,13 @@ class DRTTab:
 
         self.statistics_table.populate(drt)
         self.scores_table.populate(drt)
-        self.peak_analysis_section.populate(drt, data)
-        self.settings_table.populate(drt, data)
-
-        tau: ndarray
-        real_gamma: ndarray
-        imaginary_gamma: ndarray
-        tau, real_gamma, imaginary_gamma = drt.get_drt_data()
-        self.drt_plot.delete_series(from_index=1)
-        self.drt_plot.update(
-            index=0,
-            tau=tau,
-            gamma=real_gamma,
-            label="real" if drt.settings.method == DRTMethod.BHT else "gamma",
+        self.peak_analysis_section.populate(
+            drt,
+            data,
+            frequency=dpg.get_value(self.toggle_drt_frequency_checkbox),
         )
-
-        if (
-            drt.settings.method == DRTMethod.TR_RBF
-            and drt.settings.credible_intervals is True
-        ):
-            mean: ndarray
-            lower: ndarray
-            upper: ndarray
-            tau, mean, lower, upper = drt.get_drt_credible_intervals_data()
-            self.drt_plot.plot(
-                tau=tau,
-                gamma=mean,
-                label="mean",
-                theme=themes.drt.mean_gamma,
-            )
-            self.drt_plot.plot(
-                tau=tau,
-                lower=lower,
-                upper=upper,
-                label="3-sigma CI",
-                theme=themes.drt.credible_intervals,
-            )
-        elif drt.settings.method == DRTMethod.BHT:
-            self.drt_plot.plot(
-                tau=tau,
-                gamma=imaginary_gamma,
-                label="imag.",
-                theme=themes.drt.imaginary_gamma,
-            )
-
-        self.plot_peaks(drt)
+        self.settings_table.populate(drt, data)
+        self.plot_drt(drt)
 
         Z: ComplexImpedances = drt.get_impedances()
         self.nyquist_plot.update(
@@ -2492,51 +2697,138 @@ class DRTTab:
         if dpg.get_value(self.adjust_residuals_limits_checkbox):
             self.residuals_plot.queue_limits_adjustment()
 
-    def plot_peaks(self, drt: DRTResult):
-        if drt.peak_analysis is None:
-            return
+    def plot_drt(self, drt: DRTResult):
+        tau: ndarray
+        real_gamma: ndarray
+        imaginary_gamma: ndarray
+        tau, real_gamma, imaginary_gamma = drt.get_drt_data()
+        self.drt_plot.delete_series(from_index=1)
+        self.drt_plot.update(
+            index=0,
+            tau=tau,
+            gamma=real_gamma,
+            label="real" if drt.settings.method == DRTMethod.BHT else "gamma",
+        )
 
-        peaks: DRTPeaks
-        for peaks, fill_theme, sum_theme, part in (
-            (
-                drt.peak_analysis.real,
-                themes.drt.peak_real,
-                themes.drt.peak_sum_real,
-                "real" if drt.peak_analysis.imaginary is not None else "",
-            ),
-            (
-                drt.peak_analysis.imaginary,
-                themes.drt.peak_imaginary,
-                themes.drt.peak_sum_imaginary,
-                "imag.",
-            ),
+        if (
+            drt.settings.method == DRTMethod.TR_RBF
+            and drt.settings.credible_intervals is True
         ):
-            suffix: str = f", {part}" if part != "" else ""
-            if peaks is None or peaks.get_num_peaks() < 1:
-                continue
-
-            tau: ndarray = peaks.get_time_constants(num_per_decade=100)
-            i: int
-            for i in range(0, peaks.get_num_peaks()):
-                self.drt_plot.plot(
-                    tau=tau,
-                    lower=zeros_like(tau),
-                    upper=peaks.get_gammas(peak_indices=[i], num_per_decade=100),
-                    label=f"peaks{suffix}",
-                    show_label=i == 0,
-                    theme=fill_theme,
-                    peak=i,
-                    part=part,
-                )
-
+            mean: ndarray
+            lower: ndarray
+            upper: ndarray
+            tau, mean, lower, upper = drt.get_drt_credible_intervals_data()
             self.drt_plot.plot(
                 tau=tau,
-                gamma=peaks.get_gammas(num_per_decade=100),
-                label=f"sum{suffix}",
-                theme=sum_theme,
-                peak=-1,
-                part=part,
+                gamma=mean,
+                label="mean",
+                theme=themes.drt.mean_gamma,
             )
+            self.drt_plot.plot(
+                tau=tau,
+                lower=lower,
+                upper=upper,
+                label="3-sigma CI",
+                theme=themes.drt.credible_intervals,
+            )
+        elif drt.settings.method == DRTMethod.BHT:
+            self.drt_plot.plot(
+                tau=tau,
+                gamma=imaginary_gamma,
+                label="imag.",
+                theme=themes.drt.imaginary_gamma,
+            )
+
+        self.plot_peaks(drt)
+
+    def redraw_peaks(self):
+        drt: Optional[DRTResult] = self.peak_analysis_section._drt
+        if drt is None:
+            return
+
+        self.plot_drt(drt)
+
+    def get_peak_theme(self, color: List[float]) -> int:
+        key: Tuple[float, ...] = tuple(float(_) for _ in color)
+        if key not in self._peak_themes:
+            self._peak_themes[key] = themes.create_plot_series_theme(
+                list(key),
+                dpg.mvPlotMarker_Circle,
+            )
+
+        return self._peak_themes[key]
+
+    def plot_peaks(self, drt: DRTResult):
+        analysis: Optional[DRTPeakAnalysis] = drt.peak_analysis
+        if analysis is None:
+            return
+
+        section: PeakAnalysisSection = self.peak_analysis_section
+        has_imaginary: bool = analysis.imaginary is not None
+        sum_themes: Dict[str, int] = {
+            "real": themes.drt.peak_sum_real,
+            "imag.": themes.drt.peak_sum_imaginary,
+        }
+        residual_themes: Dict[str, int] = {
+            "real": themes.drt.peak_residual_real,
+            "imag.": themes.drt.peak_residual_imaginary,
+        }
+
+        part: str
+        peaks: DRTPeaks
+        for part, peaks in analysis.get_parts():
+            if peaks.get_num_peaks() < 1:
+                continue
+
+            label_part: str = part if has_imaginary else ""
+            suffix: str = f", {part}" if has_imaginary else ""
+            tau: ndarray = peaks.get_time_constants(num_per_decade=100)
+            if section.show_areas():
+                show_label: bool = True
+                i: int
+                for i in range(0, peaks.get_num_peaks()):
+                    if not section.is_peak_visible(drt, part, i):
+                        continue
+
+                    self.drt_plot.plot(
+                        tau=tau,
+                        lower=zeros_like(tau),
+                        upper=peaks.get_gammas(peak_indices=[i], num_per_decade=100),
+                        label=f"peaks{suffix}",
+                        show_label=show_label,
+                        theme=self.get_peak_theme(analysis.get_peak_color(part, i)),
+                        peak=i,
+                        part=label_part,
+                    )
+                    show_label = False
+
+            if section.show_sum():
+                self.drt_plot.plot(
+                    tau=tau,
+                    gamma=peaks.get_gammas(num_per_decade=100),
+                    label=f"sum{suffix}",
+                    theme=sum_themes[part],
+                    peak=-1,
+                    part=label_part,
+                )
+
+        if section.show_residual():
+            residual_tau: ndarray
+            real: ndarray
+            imaginary: Optional[ndarray]
+            residual_tau, real, imaginary = analysis.get_residuals(drt)
+            for part, values in (("real", real), ("imag.", imaginary)):
+                if values is None:
+                    continue
+
+                self.drt_plot.plot(
+                    tau=residual_tau,
+                    gamma=values,
+                    label="diff." + (f", {part}" if has_imaginary else ""),
+                    theme=residual_themes[part],
+                    peak=-2,
+                    part=part if has_imaginary else "",
+                )
 
     def get_active_output(self) -> Optional[DRTOutput]:
         return self.output_combo.get_value()

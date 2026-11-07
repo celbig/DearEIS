@@ -392,6 +392,14 @@ drt: SimpleNamespace = SimpleNamespace(
             [204.0, 51.0, 17.0, 255.0],
             dpg.mvPlotMarker_Circle,
         ),
+        "peak_residual_real": create_plot_series_theme(
+            [119.0, 119.0, 119.0, 255.0],
+            dpg.mvPlotMarker_Circle,
+        ),
+        "peak_residual_imaginary": create_plot_series_theme(
+            [238.0, 51.0, 119.0, 255.0],
+            dpg.mvPlotMarker_Circle,
+        ),
     }
 )
 
