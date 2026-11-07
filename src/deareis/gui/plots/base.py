@@ -39,10 +39,11 @@ class Plot:
         try:
             dpg.split_frame()
             self.adjust_limits()
-        except SystemError:
+        except Exception:
             # The plot may be deleted (e.g., a modal window with a preview was
             # closed) while split_frame() lets frames pass, which makes the
             # DearPyGui calls in adjust_limits fail with "Item not found".
+            # DearPyGui 1.x raises a SystemError and 2.x a plain Exception.
             if dpg.does_item_exist(self._plot):
                 raise
         finally:
