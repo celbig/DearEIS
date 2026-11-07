@@ -10,7 +10,7 @@
 - Added a `Subcircuits` checkbox to the `Real & imag.` plot in the `Fitting` tab, which shows the exact imaginary parts and the cumulative real parts of the contributions as a function of frequency.
 - The elements in the table of fitted parameters and in the circuit preview of the `Fitting` tab are colored like the contributions that they belong to when the contributions are shown. Each component keeps the same color regardless of the offset.
 - The `subcircuit_offset` parameter of `deareis.mpl.plot` also accepts `"cumulative_dc"` and `"peak"`.
-- Fixed the columns of the fit markers and the fit line overwriting each other when copying the data of the `Real & imag.` plot in the `Fitting` tab as CSV.
+- Fixed the columns of the fit markers and the fit line overwriting each other when copying the data of the `Real & imag.` plots (e.g., in the `Fitting` and `DRT analysis` tabs) as CSV. The columns are now labeled `Fit (scatter)` and `Fit (line)` like in the Nyquist plots.
 - Updated the minimum version of pyimpspec to 5.3.
 - Added support for importing equivalent circuits from ZView circuit models (`.mdl` files) via the new **Load** button next to the circuit input in the **Fitting** and **Simulation** tabs.
   - The names of the elements are used as labels, and the values and fixed/free status of the parameters are retained.

@@ -1204,7 +1204,7 @@ Score & Real (\%) & Imag. (\%) \\"""
         headers = text.split("\n")[0].strip()
         assert (
             headers
-            == "f (Hz) - Data,Re(Z) (ohm) - Data,-Im(Z) (ohm) - Data,f (Hz) - Fit,Re(Z) (ohm) - Fit,-Im(Z) (ohm) - Fit"
+            == "f (Hz) - Data,Re(Z) (ohm) - Data,-Im(Z) (ohm) - Data,f (Hz) - Fit (scatter),Re(Z) (ohm) - Fit (scatter),-Im(Z) (ohm) - Fit (scatter),f (Hz) - Fit (line),Re(Z) (ohm) - Fit (line),-Im(Z) (ohm) - Fit (line)"
         ), headers
 
     @next_step(validate_copy_complex)
