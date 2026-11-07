@@ -7,6 +7,7 @@
 - Added the `subcircuits` and `subcircuit_offset` parameters to `deareis.mpl.plot` for including the contributions in Nyquist plots of circuit fits.
 - Added the `deareis.mpl.plot_subcircuits` function and the `subcircuits` and `subcircuit_offset` parameters of `deareis.mpl.plot_fit` (both from pyimpspec), which now also work with `deareis.FitResult` instances.
 - Updated the minimum version of pyimpspec to 5.3.
+- Fixed a bug that could cause exception messages (e.g., "Item not found") in the terminal when a plot was deleted (e.g., a window with a plot was closed) while the limits of the plot were being adjusted.
 
 
 # 5.1.3 (2026/04/28)
