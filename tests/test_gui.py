@@ -159,6 +159,26 @@ def finish_tests():
     selection_window()
 
 
+def wait_until(
+    predicate: Callable[[], bool],
+    timeout: float = 10.0,
+    interval: float = 0.1,
+) -> bool:
+    """
+    Wait until predicate() returns True or the timeout expires.
+    Returns the final value of predicate().
+    Useful when the GUI is updated asynchronously (e.g., by a visibility
+    handler running in DearPyGui's callback thread).
+    """
+    t0: float = time()
+    while time() - t0 < timeout:
+        if predicate():
+            return True
+        sleep(interval)
+
+    return predicate()
+
+
 def next_step(next_func: Callable = finish_tests, delay: float = 1.0) -> Callable:
     def outer_wrapper(func: Callable) -> Callable:
         def inner_wrapper():
@@ -692,13 +712,15 @@ Element & Parameter & Value & Unit \\
             project=project,
             project_tab=project_tab,
         )
-        sleep(1.0)
         assert len(project.get_data_sets()) == 3
+        # The data sets tab is updated asynchronously once it becomes visible
+        # (e.g., the table in the GUI might be in the process of being updated).
+        wait_until(
+            lambda: project_tab.get_active_data_set(context=Context.DATA_SETS_TAB)
+            .get_label()
+            .startswith("R(RC)")
+        )
         data = project_tab.get_active_data_set(context=Context.DATA_SETS_TAB)
-        # If the following assertion fails, then it may be because the state
-        # has not finished updating (e.g., the table in the GUI might be in
-        # the process of being updated). Try increasing the amount of time
-        # spent sleeping after switching tabs.
         assert data.get_label().startswith("R(RC)"), data.get_label()
         signals.emit(
             Signal.DELETE_DATA_SET,
