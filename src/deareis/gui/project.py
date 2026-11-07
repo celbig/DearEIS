@@ -17,6 +17,7 @@
 # The licenses of DearEIS' dependencies and/or sources of portions of code are included in
 # the LICENSES folder.
 
+from weakref import WeakValueDictionary
 from typing import (
     Dict,
     List,
@@ -76,6 +77,23 @@ def run_queued_update(tab):
         GUI_CONSTRUCTION_LOCK.release()
 
 
+# DearPyGui 1.x does not keep references to the callables and user data of
+# callbacks that have been queued but not yet run. Deleting an item (or
+# replacing its callback) can thus free a callback that is still queued, which
+# then crashes the program when it runs. The callback of the tab bar of each
+# project tab is therefore a module-level function without user data, which
+# looks up the project tab via the tag of the tab bar.
+_PROJECT_TABS_BY_TAB_BAR: "WeakValueDictionary[int, ProjectTab]" = WeakValueDictionary()
+
+
+def _select_tab_callback(sender: int, app_data: int):
+    project_tab: Optional["ProjectTab"] = _PROJECT_TABS_BY_TAB_BAR.get(sender)
+    if project_tab is None or not dpg.does_item_exist(sender):
+        return
+
+    project_tab.select_tab(app_data)
+
+
 class ProjectTab:
     def __init__(self, uuid: str, tab_bar: int, state):
         assert type(uuid) is str, uuid
@@ -94,21 +112,10 @@ class ProjectTab:
             self.tab_lookup: dict = {}
             self.context_lookup: Dict[int, Context] = {}
 
-            def select_tab(tab_id: int):
-                tab = self.tab_lookup.get(tab_id)
-                
-                assert tab is not None
-                
-                tab.resize(
-                    width=dpg.get_viewport_client_width(),
-                    height=dpg.get_viewport_client_height(),
-                )
-                
-                run_queued_update(tab)
-
             self.tab_bar: Tag = dpg.generate_uuid()
+            _PROJECT_TABS_BY_TAB_BAR[self.tab_bar] = self
             with dpg.tab_bar(
-                callback=lambda s, a, u: select_tab(a),
+                callback=_select_tab_callback,
                 tag=self.tab_bar,
             ):
                 self.overview_tab: OverviewTab = OverviewTab()
@@ -166,6 +173,18 @@ class ProjectTab:
                         user_data=tab,
                     )
                 dpg.bind_item_handler_registry(tab.visibility_item, item_handler)
+
+    def select_tab(self, tab_id: int):
+        tab = self.tab_lookup.get(tab_id)
+        if tab is None:
+            return
+
+        tab.resize(
+            width=dpg.get_viewport_client_width(),
+            height=dpg.get_viewport_client_height(),
+        )
+
+        run_queued_update(tab)
 
     def resize(self, width: int, height: int):
         assert type(width) is int and width > 0, width
