@@ -37,6 +37,7 @@ from deareis.data.drt import (
 )
 from deareis.enums import (
     CrossValidationMethod,
+    DRTLowFrequencyPrior,
     DRTMethod,
     DRTMode,
     DRTPeakShape,
@@ -44,6 +45,7 @@ from deareis.enums import (
     RBFType,
     TRNNLSLambdaMethod,
     cross_validation_method_to_value as _cross_validation_method_to_value,
+    drt_low_frequency_prior_to_value as _drt_low_frequency_prior_to_value,
     drt_method_to_value as _drt_method_to_value,
     drt_mode_to_value as _drt_mode_to_value,
     drt_peak_shape_to_value as _drt_peak_shape_to_value,
@@ -72,6 +74,7 @@ def calculate_drt(
     - Liu, J., Wan, T. H., and Ciucci, F., 2020, Electrochim. Acta, 357, 136864 (https://doi.org/10.1016/j.electacta.2020.136864)
     - Boukamp, B.A., 2015, Electrochim. Acta, 154, 35-46, (https://doi.org/10.1016/j.electacta.2014.12.059)
     - Boukamp, B.A. and Rolle, A, 2017, Solid State Ionics, 302, 12-18 (https://doi.org/10.1016/j.ssi.2016.10.009)
+    - Huang, J., Papac, M., and O'Hayre, R., 2020, Electrochim. Acta, 367, 137493 (https://doi.org/10.1016/j.electacta.2020.137493)
 
 
     Parameters
@@ -114,6 +117,10 @@ def calculate_drt(
         gaussian_width=settings.gaussian_width,
         timeout=settings.timeout,
         num_procs=num_procs,
+        cutoff_frequency=settings.bayes_cutoff_frequency,
+        low_frequency_prior=_drt_low_frequency_prior_to_value[settings.bayes_low_frequency_prior],
+        warmup=settings.bayes_warmup,
+        samples=settings.bayes_samples,
     )
     real_gammas: _pyimpspec.Gammas = result.real_gammas if hasattr(result, "real_gammas") else result.gammas
     imaginary_gammas: _pyimpspec.Gammas = result.imaginary_gammas if hasattr(result, "imaginary_gammas") else array([])

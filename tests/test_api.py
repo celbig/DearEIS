@@ -966,6 +966,53 @@ class TestDRT(TestCase):
             )
         )
 
+    def test_settings_without_bayes_fields(self):
+        # Settings stored before the Bayesian method was added lack its fields
+        from dataclasses import replace
+        from deareis.config.defaults import DEFAULT_DRT_SETTINGS
+
+        dictionary: dict = DEFAULT_DRT_SETTINGS.to_dict()
+        for key in (
+            "bayes_cutoff_frequency",
+            "bayes_low_frequency_prior",
+            "bayes_warmup",
+            "bayes_samples",
+        ):
+            del dictionary[key]
+        dictionary["version"] = 4
+        settings = deareis.DRTSettings.from_dict(dictionary)
+        self.assertEqual(settings, DEFAULT_DRT_SETTINGS)
+
+        settings = replace(
+            DEFAULT_DRT_SETTINGS,
+            method=deareis.DRTMethod.BAYES_DRT2,
+            bayes_cutoff_frequency=0.01,
+            bayes_low_frequency_prior=deareis.DRTLowFrequencyPrior.NEGATIVE,
+        )
+        self.assertEqual(deareis.DRTSettings.from_dict(settings.to_dict()), settings)
+
+    def test_bayes_drt2(self):
+        from dataclasses import replace
+        from importlib.util import find_spec
+        from deareis.config.defaults import DEFAULT_DRT_SETTINGS
+
+        if find_spec("bayes_drt2") is None or find_spec("cmdstanpy") is None:
+            self.skipTest("bayes_drt2 and cmdstanpy are not installed")
+
+        drt: deareis.DRTResult = deareis.calculate_drt(
+            self.data,
+            replace(
+                DEFAULT_DRT_SETTINGS,
+                method=deareis.DRTMethod.BAYES_DRT2,
+                mode=deareis.DRTMode.COMPLEX,
+                bayes_cutoff_frequency=0.01,
+            ),
+        )
+        tau, real, imaginary = drt.get_drt_data()
+        self.assertEqual(tau.shape, real.shape)
+        self.assertEqual(drt.get_drt_credible_intervals_data()[0].size, 0)
+        self.assertTrue(drt.get_label().startswith("Bayesian"))
+
     def test_mrq_fit(self):
         fit: deareis.FitResult = deareis.fit_circuit(
             data=self.data,

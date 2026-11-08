@@ -1,5 +1,9 @@
 # Unreleased
 
+- Added the `Bayesian` method to the `DRT` tab, which uses the optional `bayes_drt2` package (together with cmdstanpy and CmdStan) to perform a hierarchical Bayesian inversion.
+  - A MAP estimate is calculated by default. Enabling `Credible intervals` uses HMC sampling and shows the 95 % credible intervals.
+  - The DRT can be left free or forced to be non-positive below a cut-off frequency.
+- Added the `DRTLowFrequencyPrior` enum, the `DRTMethod.BAYES_DRT2` member, and the `bayes_cutoff_frequency`, `bayes_low_frequency_prior`, `bayes_warmup`, and `bayes_samples` fields of `DRTSettings`.
 - Added the `Subcircuits` checkbox and offset selection to the Nyquist plot in the `Fitting` tab, which show the contribution of each component that is connected in series in the fitted circuit (e.g., `R`, `(RC)`, and `(RW)` for `R(RC)(RW)`).
   - The state of the checkbox and the chosen offset are stored in the configuration file.
   - The contributions are included when copying the data of the plot as CSV and are hidden when plotting admittance.

@@ -66,6 +66,7 @@ from pyimpspec import (
 from deareis.data.fitting import FitResult
 from deareis.enums import (
     CrossValidationMethod,
+    DRTLowFrequencyPrior,
     DRTMethod,
     DRTMode,
     DRTPeakShape,
@@ -107,7 +108,16 @@ DRT_PEAK_PALETTE: List[Tuple[float, float, float, float]] = [
     (153.0, 153.0, 51.0, 110.0),
     (170.0, 68.0, 153.0, 110.0),
 ]
-SETTINGS_VERSION: int = 4  # DRTSettings is unchanged since version 4 (also used in config files)
+SETTINGS_VERSION: int = 5  # Version 5 added the settings of the Bayesian method (also used in config files)
+
+
+def _parse_settings_v5(dictionary: dict) -> dict:
+    dictionary.setdefault("bayes_cutoff_frequency", 0.0)
+    dictionary.setdefault("bayes_low_frequency_prior", DRTLowFrequencyPrior.FREE)
+    dictionary.setdefault("bayes_warmup", 200)
+    dictionary.setdefault("bayes_samples", 200)
+
+    return dictionary
 
 
 def _parse_settings_v4(dictionary: dict) -> dict:
@@ -245,6 +255,23 @@ class DRTSettings:
 
     tr_nnls_lambda_method: TRNNLSLambdaMethod
         The method used by the TR-NNLS method to automatically pick a lambda value
+
+    bayes_cutoff_frequency: float
+        The frequency (in hertz) below which the DRT is not constrained to be non-negative.
+        A value of zero means that the DRT is non-negative at all frequencies.
+        Bayesian method only.
+
+    bayes_low_frequency_prior: DRTLowFrequencyPrior
+        The prior on the DRT below the cut-off frequency.
+        Bayesian method only.
+
+    bayes_warmup: int
+        The number of warmup iterations of each HMC chain (used when credible intervals are calculated).
+        Bayesian method only.
+
+    bayes_samples: int
+        The number of samples drawn by each HMC chain (used when credible intervals are calculated).
+        Bayesian method only.
     """
 
     method: DRTMethod
@@ -265,6 +292,10 @@ class DRTSettings:
     num_per_decade: int
     cross_validation_method: CrossValidationMethod
     tr_nnls_lambda_method: TRNNLSLambdaMethod
+    bayes_cutoff_frequency: float = 0.0
+    bayes_low_frequency_prior: DRTLowFrequencyPrior = DRTLowFrequencyPrior.FREE
+    bayes_warmup: int = 200
+    bayes_samples: int = 200
 
     def __repr__(self) -> str:
         return f"DRTSettings ({hex(id(self))})"
@@ -290,6 +321,10 @@ class DRTSettings:
             "num_per_decade": self.num_per_decade,
             "cross_validation_method": self.cross_validation_method,
             "tr_nnls_lambda_method": self.tr_nnls_lambda_method,
+            "bayes_cutoff_frequency": self.bayes_cutoff_frequency,
+            "bayes_low_frequency_prior": int(self.bayes_low_frequency_prior),
+            "bayes_warmup": self.bayes_warmup,
+            "bayes_samples": self.bayes_samples,
         }
 
     @classmethod
@@ -306,6 +341,7 @@ class DRTSettings:
             2: _parse_settings_v2,
             3: _parse_settings_v3,
             4: _parse_settings_v4,
+            5: _parse_settings_v5,
         }
         assert version in parsers, f"{version=} not in {parsers.keys()=}"
 
@@ -335,6 +371,10 @@ class DRTSettings:
         assert "num_per_decade" in dictionary
         assert "cross_validation_method" in dictionary
         assert "tr_nnls_lambda_method" in dictionary
+        assert "bayes_cutoff_frequency" in dictionary
+        assert "bayes_low_frequency_prior" in dictionary
+        assert "bayes_warmup" in dictionary
+        assert "bayes_samples" in dictionary
 
         dictionary["method"] = DRTMethod(dictionary["method"])
         dictionary["mode"] = DRTMode(dictionary["mode"])
@@ -345,6 +385,9 @@ class DRTSettings:
         )
         dictionary["tr_nnls_lambda_method"] = TRNNLSLambdaMethod(
                 dictionary["tr_nnls_lambda_method"]
+        )
+        dictionary["bayes_low_frequency_prior"] = DRTLowFrequencyPrior(
+            dictionary["bayes_low_frequency_prior"]
         )
         
         if dictionary["fit"] is not None:

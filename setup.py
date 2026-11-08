@@ -27,6 +27,7 @@ dev_dependencies = [
 
 optional_dependencies = {
     "cvxopt": "cvxopt~=1.3",  # Used in the DRT calculations (TR-RBF method)
+    "bayes-drt2": "bayes-drt2",  # Used in the DRT calculations (Bayesian method); not on PyPI, requires cmdstanpy and CmdStan
     "kvxopt": "kvxopt~=1.3",  # Fork of cvxopt that may provide wheels for additional platforms
     "dev": dev_dependencies,
 }

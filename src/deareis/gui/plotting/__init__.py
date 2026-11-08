@@ -2769,7 +2769,7 @@ class PlottingTab:
                         show_label=show_label,
                     )
                 elif (
-                    series.settings.method == DRTMethod.TR_RBF
+                    series.settings.method in (DRTMethod.TR_RBF, DRTMethod.BAYES_DRT2)
                     and series.settings.credible_intervals is True
                 ):
                     tau, mean, lower, upper = series.get_drt_credible_intervals_data()
@@ -2781,7 +2781,11 @@ class PlottingTab:
                         tau=tau,
                         lower=lower,
                         upper=upper,
-                        label=f"{label}, 3-sigma CI" if label is not None else label,
+                        label=(
+                            f"{label}, {'3-sigma' if series.settings.method == DRTMethod.TR_RBF else '95%'} CI"
+                            if label is not None
+                            else label
+                        ),
                         theme=themes.create_plot_series_theme(
                             alt_color,
                             dpg.mvPlotMarker_Circle,
