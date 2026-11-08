@@ -2178,6 +2178,35 @@ Element & Parameter & Value & Std. err. (\%) & Unit & Fixed \\
         assert project_tab.get_fit_settings() == previous_settings[0]
 
     @next_step(load_invalid_circuit_file)
+    def drt_initial_values():
+        print("  - Initial values from DRT")
+        assert STATE.is_project_dirty(project) is False
+        tab = project_tab.fitting_tab
+        original: FitSettings = tab.get_settings()
+        default: str = parse_cdc("R(RC)(RQ)").serialize()
+        signals.emit(
+            Signal.APPLY_FIT_SETTINGS,
+            settings=FitSettings(
+                cdc=default,
+                method=original.method,
+                weight=original.weight,
+                max_nfev=original.max_nfev,
+                timeout=original.timeout,
+            ),
+        )
+        sleep(0.5)
+        drt = tab.get_selected_drt()
+        tab.estimate_initial_values_from_drt()
+        sleep(0.5)
+        if drt is None:
+            assert tab.get_settings().cdc == default
+            assert dpg.is_item_shown(tab.drt_messages_text)
+        else:
+            assert tab.get_settings().cdc != default
+        signals.emit(Signal.APPLY_FIT_SETTINGS, settings=original)
+        sleep(0.5)
+
+    @next_step(drt_initial_values)
     def cycle_data_sets():
         print("  - Cycle data sets")
         perform_action(action=Action.NEXT_PRIMARY_RESULT)

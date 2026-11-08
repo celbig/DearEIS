@@ -4,13 +4,13 @@ Circuit fitting
 ===============
 
 .. automodule:: deareis
-   :members: fit_circuit
+   :members: fit_circuit, estimate_initial_values, extract_drt_processes
 
 
 Classes
 -------
 .. automodule:: deareis
-   :members: FitResult, FitSettings
+   :members: FitResult, FitSettings, DRTProcess
 
 Enums
 -----

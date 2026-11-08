@@ -1002,6 +1002,239 @@ class TestDRT(TestCase):
         )
 
 
+class TestInitialValues(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from dataclasses import replace
+        from numpy import logspace
+        from numpy.random import default_rng
+        from deareis.config.defaults import DEFAULT_DRT_SETTINGS
+
+        cls.true_circuit: pyimpspec.Circuit = pyimpspec.parse_cdc(
+            "R{R=20}(R{R=100}C{C=1e-6})(R{R=300}Q{Y=2e-3,n=0.9})L{L=1e-7}"
+        )
+        f: ndarray = logspace(6, -2, 81)
+        Z: ndarray = cls.true_circuit.get_impedances(f)
+        rng = default_rng(0)
+        Z = Z * (
+            1 + 0.002 * (rng.standard_normal(f.size) + 1j * rng.standard_normal(f.size))
+        )
+        cls.data: deareis.DataSet = deareis.DataSet(
+            frequencies=f,
+            impedances=Z,
+            label="Synthetic",
+        )
+        cls.drt: deareis.DRTResult = deareis.calculate_drt(
+            cls.data,
+            replace(DEFAULT_DRT_SETTINGS, method=deareis.DRTMethod.TR_RBF),
+        )
+
+    def estimate(self, cdc: str) -> Tuple[pyimpspec.Circuit, List[str]]:
+        return deareis.estimate_initial_values(
+            pyimpspec.parse_cdc(cdc),
+            self.drt,
+            self.data,
+        )
+
+    def values(self, circuit: pyimpspec.Circuit) -> List[Dict[str, float]]:
+        return [_.get_values() for _ in circuit.get_elements()]
+
+    def with_peaks(self, shape: "deareis.DRTPeakShape", num_peaks: int = 0) -> deareis.DRTResult:
+        # A copy of the DRT result with a stored peak analysis.
+        from copy import copy
+
+        drt: deareis.DRTResult = copy(self.drt)
+        drt.peak_analysis = deareis.analyze_drt_peaks(
+            drt=drt,
+            settings=deareis.DRTPeakSettings(
+                shape=shape,
+                num_peaks=num_peaks,
+                peak_positions=[],
+                disallow_skew=False,
+                global_optimization=False,
+            ),
+        )
+        return drt
+
+    def test_processes(self):
+        # Without a stored peak analysis, ZARC peaks are analyzed.
+        self.assertIsNone(self.drt.peak_analysis)
+        processes: List[deareis.DRTProcess] = deareis.extract_drt_processes(
+            self.drt,
+            num_peaks=2,
+        )
+        self.assertEqual(len(processes), 2)
+        self.assertIsNone(self.drt.peak_analysis)
+        taus: List[float] = [_.time_constant for _ in processes]
+        self.assertEqual(taus, sorted(taus))
+        self.assertTrue(isclose(taus[0], 1e-4, rtol=0.2))
+        self.assertTrue(all(isinstance(_.peak, pyimpspec.DRTPeakZARC) for _ in processes))
+        # The areas of the ZARC peaks overestimate the resistances by up to ~20 %
+        # because of the broadening of the peaks by the regularization of the DRT.
+        self.assertTrue(isclose(sum(_.resistance for _ in processes), 400.0, rtol=0.15))
+
+    def test_stored_peak_analysis(self):
+        drt: deareis.DRTResult = self.with_peaks(deareis.DRTPeakShape.GAUSSIAN, 2)
+        processes: List[deareis.DRTProcess] = deareis.extract_drt_processes(drt)
+        self.assertTrue(
+            all(isinstance(_.peak, pyimpspec.DRTPeakGaussian) for _ in processes)
+        )
+        circuit, messages = deareis.estimate_initial_values(
+            pyimpspec.parse_cdc("R(RC)(RQ)"),
+            drt,
+            self.data,
+        )
+        R0, R1, C1, R2, Q2 = self.values(circuit)
+        self.assertTrue(isclose(R1["R"], processes[0].resistance))
+        self.assertTrue(isclose(R2["R"], processes[1].resistance))
+        self.assertFalse(any("no peak analysis" in _ for _ in messages))
+
+    def test_return_types(self):
+        circuit, messages = self.estimate("R(RC)(RQ)L")
+        self.assertIsInstance(circuit, pyimpspec.Circuit)
+        self.assertIsInstance(messages, list)
+        self.assertTrue(all(type(_) is str for _ in messages))
+        self.assertTrue(any("no peak analysis" in _ for _ in messages))
+
+    def test_input_unchanged(self):
+        original: pyimpspec.Circuit = pyimpspec.parse_cdc("R(RC)(RQ)")
+        cdc: str = original.serialize()
+        deareis.estimate_initial_values(original, self.drt, self.data)
+        self.assertEqual(original.serialize(), cdc)
+
+    def test_values(self):
+        circuit, _ = self.estimate("R(RC)(RQ)L")
+        R0, R1, C1, R2, Q2, L = self.values(circuit)
+        self.assertTrue(isclose(R0["R"], 20.0, rtol=0.2))
+        self.assertTrue(isclose(R1["R"], 100.0, rtol=0.25))
+        self.assertTrue(isclose(R1["R"] * C1["C"], 1e-4, rtol=0.2))
+        self.assertTrue(isclose(R2["R"], 300.0, rtol=0.25))
+        # The n of the CPE comes from the ZARC peak.
+        self.assertTrue(isclose(Q2["n"], 0.9, atol=0.05))
+        self.assertTrue(isclose((R2["R"] * Q2["Y"]) ** (1 / Q2["n"]), 0.6, rtol=0.5))
+        self.assertTrue(isclose(L["L"], 1e-7, rtol=0.5))
+
+    def test_order(self):
+        # The blocks follow their positions in the circuit (high to low frequency).
+        circuit, _ = self.estimate("R(RQ)(RC)")
+        R0, R1, Q1, R2, C2 = self.values(circuit)
+        self.assertTrue(isclose(R1["R"], 100.0, rtol=0.25))
+        self.assertTrue(isclose(R2["R"], 300.0, rtol=0.25))
+        self.assertLess(
+            (R1["R"] * Q1["Y"]) ** (1 / Q1["n"]),
+            R2["R"] * C2["C"],
+        )
+
+    def test_merging(self):
+        # A stored peak analysis may have more peaks than there are blocks.
+        drt: deareis.DRTResult = self.with_peaks(deareis.DRTPeakShape.GAUSSIAN, 0)
+        self.assertGreater(len(deareis.extract_drt_processes(drt)), 1)
+        circuit, messages = deareis.estimate_initial_values(
+            pyimpspec.parse_cdc("R(RC)"),
+            drt,
+            self.data,
+        )
+        R0, R1, C1 = self.values(circuit)
+        self.assertTrue(isclose(R1["R"], 400.0, rtol=0.1))
+        self.assertTrue(any("merged" in _ for _ in messages))
+
+    def test_merging_without_peak_analysis(self):
+        # All detected peaks are analyzed, so the smaller process is not lost.
+        circuit, messages = self.estimate("R(RC)")
+        R0, R1, C1 = self.values(circuit)
+        self.assertTrue(isclose(R1["R"], 400.0, rtol=0.15))
+        self.assertTrue(any("merged" in _ for _ in messages))
+
+    def test_fewer_peaks_without_peak_analysis(self):
+        # The DRT only has two processes: the peak that is added when three peaks are
+        # requested has a negligible area, so the last block is not changed.
+        cdc: str = "R(RC)(RC)(RC)"
+        default: pyimpspec.Circuit = pyimpspec.parse_cdc(cdc)
+        circuit, messages = self.estimate(cdc)
+        values: List[Dict[str, float]] = self.values(circuit)
+        self.assertNotEqual(values[1:3], self.values(default)[1:3])
+        self.assertEqual(values[-2:], self.values(default)[-2:])
+        self.assertTrue(any("were not changed" in _ for _ in messages))
+
+    def test_fewer_peaks(self):
+        drt: deareis.DRTResult = self.with_peaks(deareis.DRTPeakShape.GAUSSIAN, 2)
+        cdc: str = "R" + "(RC)" * 8
+        default: pyimpspec.Circuit = pyimpspec.parse_cdc(cdc)
+        circuit, messages = deareis.estimate_initial_values(
+            pyimpspec.parse_cdc(cdc),
+            drt,
+            self.data,
+        )
+        self.assertEqual(self.values(circuit)[-2:], self.values(default)[-2:])
+        self.assertTrue(any("were not changed" in _ for _ in messages))
+
+    def test_fixed_and_unrecognized(self):
+        circuit, messages = self.estimate("R{R=5F}(RC)(RQ)W")
+        R0, R1, C1, R2, Q2, W = self.values(circuit)
+        self.assertEqual(R0["R"], 5.0)
+        self.assertEqual(W, pyimpspec.parse_cdc("W").get_elements()[0].get_values())
+        self.assertTrue(any("R_1.R is fixed" in _ for _ in messages))
+        self.assertTrue(any("W_1 was not recognized" in _ for _ in messages))
+
+    def test_limits(self):
+        circuit, messages = self.estimate("R(R{R=1/1/50}C)(RQ)")
+        R0, R1, C1, R2, Q2 = self.values(circuit)
+        self.assertEqual(R1["R"], 50.0)
+        # The time constant is still correct.
+        self.assertTrue(isclose(R1["R"] * C1["C"], 1e-4, rtol=0.2))
+        self.assertTrue(any("restricted by its limits" in _ for _ in messages))
+
+    def test_zarc(self):
+        circuit, _ = self.estimate("RZarcZarc")
+        R0, Z1, Z2 = self.values(circuit)
+        self.assertTrue(isclose(Z1["tau"], 1e-4, rtol=0.2))
+        self.assertTrue(isclose(Z2["R"], 300.0, rtol=0.25))
+        self.assertTrue(isclose(Z2["n"], 0.9, atol=0.05))
+
+    def test_havriliak_negami(self):
+        drt: deareis.DRTResult = self.with_peaks(
+            deareis.DRTPeakShape.HAVRILIAK_NEGAMI, 2
+        )
+        peak = deareis.extract_drt_processes(drt)[1].peak
+        self.assertIsInstance(peak, pyimpspec.DRTPeakHavriliakNegami)
+        circuit, _ = deareis.estimate_initial_values(
+            pyimpspec.parse_cdc("R(RC)Ha"),
+            drt,
+            self.data,
+        )
+        Ha = self.values(circuit)[-1]
+        for key in ("tau", "a", "b"):
+            expected: float = float(getattr(peak, key))
+            element = circuit.get_elements()[-1]
+            expected = min(
+                max(expected, element.get_lower_limit(key)),
+                element.get_upper_limit(key),
+            )
+            self.assertTrue(isclose(Ha[key], expected), key)
+
+    def test_fit(self):
+        from dataclasses import replace
+
+        settings: deareis.FitSettings = deareis.FitSettings(
+            cdc="",
+            method=deareis.CNLSMethod.LEASTSQ,
+            weight=deareis.Weight.BOUKAMP,
+            max_nfev=1000,
+            timeout=0,
+        )
+        circuit, _ = self.estimate("R(RC)(RQ)L")
+        default_fit: deareis.FitResult = deareis.fit_circuit(
+            self.data,
+            replace(settings, cdc=pyimpspec.parse_cdc("R(RC)(RQ)L").serialize()),
+        )
+        fit: deareis.FitResult = deareis.fit_circuit(
+            self.data,
+            replace(settings, cdc=circuit.serialize()),
+        )
+        self.assertLessEqual(fit.chisqr, default_fit.chisqr)
+        self.assertLess(fit.nfev, default_fit.nfev)
+
+
 # TODO: Update tests
 class TestDRTPeakAnalysis(TestCase):
     @classmethod

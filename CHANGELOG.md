@@ -30,6 +30,13 @@
   - The table of peaks can be copied to the clipboard (tab-separated values) or saved as a CSV file.
   - The areas of the peaks, the sum of the peaks, and the difference between the DRT and the sum of the peaks can be added as separate series to DRT plots in the plotting tab (also when exporting plots via matplotlib).
   - Specifying the number of peaks now results in exactly that number of peaks being analyzed even when overlapping peaks do not produce distinct local maxima (requires a version of pyimpspec that includes the corresponding fix).
+- Added the `Init. values from DRT` option to the `Fitting` tab, which estimates the initial values of a circuit based on a DRT result of the current data set.
+  - The time constants and resistances of the processes are obtained from the positions and areas of the peaks found by the peak analysis of the DRT result. If the DRT result has no peak analysis, then ZARC peaks are analyzed for the estimate (the result is not saved).
+  - The dispersion parameter of a ZARC peak is used for the `n` of a CPE or `Zarc`, and the parameters of a Havriliak-Negami peak are used for `Ha`.
+  - Relaxation blocks (`(RC)`, `(RQ)`, `Zarc`, and `Ha`) that are connected in series at the top level are matched, from left to right, to the peaks sorted from high to low frequency.
+  - The first series resistor and the first series inductor are also initialized.
+  - Fixed parameters are not changed and values are restricted by the limits of the parameters.
+- Added the `deareis.estimate_initial_values` and `deareis.extract_drt_processes` functions, and the `deareis.DRTProcess` class.
 - Fixed a bug that could cause exception messages (e.g., "Item not found") in the terminal when a plot was deleted (e.g., a window with a plot was closed) while the limits of the plot were being adjusted.
 - Fixed a bug that caused an exception when adjusting the limits of an empty plot of residuals.
 - Fixed a bug that caused an exception when toggling the frequency axis in the DRT plot while a shaded series (e.g., the credible intervals of TR-RBF) was present.

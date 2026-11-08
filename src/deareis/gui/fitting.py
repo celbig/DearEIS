@@ -63,10 +63,12 @@ from deareis.enums import (
     weight_to_label,
 )
 from deareis.data import (
+    DRTResult,
     DataSet,
     FitResult,
     FitSettings,
 )
+from deareis.api.initial_values import estimate_initial_values
 from deareis.gui.plots import (
     Bode,
     Impedance,
@@ -1032,10 +1034,13 @@ class FittingTab:
             self.create_results_tables()
 
     def create_settings_menu(self, state, label_pad: int):
+        self.settings_window_height: int = 176
+        self.settings_window: Tag = dpg.generate_uuid()
         with dpg.child_window(
             border=True,
             width=-1,
-            height=150,
+            height=self.settings_window_height,
+            tag=self.settings_window,
         ):
             self.circuit_editor: CircuitEditor = CircuitEditor(
                 window=dpg.add_window(
@@ -1057,6 +1062,38 @@ class FittingTab:
                     Signal.SELECT_CIRCUIT_FILE,
                     context=Context.FITTING_TAB,
                 ),
+            )
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Init. values from DRT".rjust(label_pad))
+                attach_tooltip(tooltips.fitting.drt_initial_values)
+
+                self.drt_combo: Tag = dpg.generate_uuid()
+                dpg.add_combo(
+                    items=[],
+                    user_data={},
+                    width=-70,
+                    tag=self.drt_combo,
+                )
+
+                self.estimate_initial_values_button: Tag = dpg.generate_uuid()
+                dpg.add_button(
+                    label="Apply",
+                    callback=lambda s, a, u: self.estimate_initial_values_from_drt(),
+                    width=-1,
+                    tag=self.estimate_initial_values_button,
+                )
+                attach_tooltip(tooltips.fitting.apply_drt_initial_values)
+
+            self.drt_messages_text: Tag = dpg.generate_uuid()
+            dpg.bind_item_theme(
+                dpg.add_text(
+                    "",
+                    wrap=self.sidebar_width - 32,
+                    show=False,
+                    tag=self.drt_messages_text,
+                ),
+                themes.result.invalid,
             )
 
             with dpg.group(horizontal=True):
@@ -1706,6 +1743,82 @@ class FittingTab:
                 self.delete_button,
                 {},
             )
+
+    def populate_drts(self, lookup: Dict[str, DRTResult]):
+        assert type(lookup) is dict, lookup
+        labels: List[str] = list(lookup.keys())
+        label: str = dpg.get_value(self.drt_combo) or ""
+        if label not in labels:
+            label = labels[0] if labels else ""
+
+        dpg.configure_item(
+            self.drt_combo,
+            items=labels,
+            default_value=label,
+            user_data=lookup.copy(),
+        )
+        self.show_drt_messages([])
+
+    def get_selected_drt(self) -> Optional[DRTResult]:
+        lookup: Dict[str, DRTResult] = dpg.get_item_user_data(self.drt_combo) or {}
+        return lookup.get(dpg.get_value(self.drt_combo) or "")
+
+    def show_drt_messages(self, messages: List[str]):
+        text: str = "\n".join(f"- {_}" for _ in messages)
+        dpg.set_value(self.drt_messages_text, text)
+        height: int = self.settings_window_height
+        if messages:
+            dpg.show_item(self.drt_messages_text)
+            wrap: int = self.sidebar_width - 32
+            size: Optional[List[float]] = dpg.get_text_size(text, wrap_width=wrap)
+            if size is None or size[1] <= 0.0:
+                # Rough estimate if the size cannot be determined (e.g., before the
+                # first frame has been rendered).
+                size = [0.0, 17.0 * sum(1 + 7 * len(_) // wrap for _ in messages)]
+            height += int(size[1]) + 4
+        else:
+            dpg.hide_item(self.drt_messages_text)
+
+        dpg.configure_item(self.settings_window, height=height)
+
+    def estimate_initial_values_from_drt(self):
+        data: Optional[DataSet] = dpg.get_item_user_data(self.perform_fit_button)
+        drt: Optional[DRTResult] = self.get_selected_drt()
+        if data is None or drt is None:
+            self.show_drt_messages(
+                ["Perform a DRT analysis of the data set first (see the DRT tab)."]
+            )
+            return
+
+        settings: FitSettings = self.get_settings()
+        circuit: Optional[Circuit] = dpg.get_item_user_data(
+            self.settings_menu.cdc_input
+        )
+        if circuit is None:
+            self.show_drt_messages(["The circuit is not valid."])
+            return
+
+        messages: List[str]
+        try:
+            circuit, messages = estimate_initial_values(circuit, drt, data)
+        except ValueError as err:
+            self.show_drt_messages([str(err)])
+            return
+        except Exception:
+            signals.emit(Signal.SHOW_ERROR_MESSAGE, traceback=format_exc())
+            return
+
+        signals.emit(
+            Signal.APPLY_FIT_SETTINGS,
+            settings=FitSettings(
+                cdc=circuit.serialize(),
+                method=settings.method,
+                weight=settings.weight,
+                max_nfev=settings.max_nfev,
+                timeout=settings.timeout,
+            ),
+        )
+        self.show_drt_messages(messages)
 
     def get_next_data_set(self) -> Optional[DataSet]:
         return self.data_sets_combo.get_next()
