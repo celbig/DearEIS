@@ -131,5 +131,18 @@ Delete the current fit result.
         "apply_fitted_as_initial": """
 Copy the fitted circuit so that its values can be used as initial values.
     """.strip(),
+        "drt_initial_values": """
+The result of a DRT analysis of the current data set that is used to estimate the initial values of the circuit.
+
+The time constant and the resistance of each process are obtained from the position and the area of the corresponding peak found by the peak analysis of the DRT (see the DRT tab). If the DRT result has no peak analysis, then ZARC peaks are analyzed for the estimate (the result is not saved). The following parts of the circuit that are connected in series at the top level are initialized:
+- Relaxation blocks: (RC), (RQ), Zarc, and Ha. They are matched, from left to right, to the peaks sorted from high to low frequency. Write the circuit so that the order of the blocks corresponds to the order of the processes in terms of frequency. If there are more peaks than blocks, then the closest peaks are merged. The n of a CPE or Zarc is obtained from a ZARC peak, and the parameters of Ha from a Havriliak-Negami peak.
+- The first resistor: the difference between the real part of the impedance of the data set and the real part of the impedance of the DRT.
+- The first inductor: the positive imaginary impedance at the highest frequency.
+
+Other parts of the circuit (e.g., Warburg elements and nested connections) and fixed parameters are left unchanged. Values are restricted by the limits of the parameters.
+    """.strip(),
+        "apply_drt_initial_values": """
+Estimate the initial values of the circuit based on the selected DRT result.
+    """.strip(),
     }
 )

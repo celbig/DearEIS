@@ -360,12 +360,14 @@ class ProjectTab:
         assert type(project) is Project, project
         assert type(data) is DataSet or data is None, data
         
-        self.drt_tab.populate_drts(
+        lookup: Dict[str, DRTResult] = (
             {_.get_label(): _ for _ in project.get_drts(data)}
             if data is not None
-            else {},
-            data,
+            else {}
         )
+        # NOTE: The DRT tab modifies 'lookup' in-place, so the fitting tab gets a copy.
+        self.fitting_tab.populate_drts(lookup.copy())
+        self.drt_tab.populate_drts(lookup, data)
 
     def populate_fits(self, project: Project, data: Optional[DataSet]):
         assert type(project) is Project, project

@@ -57,6 +57,11 @@ from deareis.api.fitting import (
     # - functions
     fit_circuit,
 )
+from deareis.api.initial_values import (
+    DRTProcess,
+    estimate_initial_values,
+    extract_drt_processes,
+)
 from deareis.api.simulation import (
     SimulationResult,
     SimulationSettings,
