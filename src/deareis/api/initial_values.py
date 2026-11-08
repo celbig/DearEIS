@@ -20,7 +20,6 @@
 from dataclasses import dataclass
 from math import (
     exp as _exp,
-    inf as _inf,
     isfinite as _isfinite,
     log as _log,
 )
@@ -327,13 +326,7 @@ class _Updater:
     def name(self, element: Element) -> str:
         return self.names.get(element, element.get_symbol())
 
-    def set(
-        self,
-        element: Element,
-        key: str,
-        value: float,
-        allow_negative: bool = False,
-    ):
+    def set(self, element: Element, key: str, value: float):
         if not _isfinite(value):
             return
 
@@ -341,13 +334,6 @@ class _Updater:
         if element.is_fixed(key):
             self.messages.append(f"{name} is fixed and was not changed.")
             return
-
-        if allow_negative and value < element.get_lower_limit(key):
-            # Negative peaks correspond to negative values (e.g., R and C of an (RC)).
-            element.set_lower_limits(**{key: -_inf})
-            self.messages.append(
-                f"The lower limit of {name} was removed to allow a negative value."
-            )
 
         lower: float = element.get_lower_limit(key)
         upper: float = element.get_upper_limit(key)
@@ -403,6 +389,55 @@ def _as_relaxation_block(item: Union[Element, Connection]) -> Optional[_Relaxati
     return item
 
 
+def _allows_negative(block: _RelaxationBlock) -> bool:
+    # Whether the limits of all of the parameters that are initialized with a
+    # resistance (or a quantity that has the same sign) allow negative values.
+    if isinstance(block, (ZARC, HavriliakNegamiAlternative)):
+        return block.get_lower_limit("R") < 0.0
+
+    children: List[Element] = list(block)
+    capacitive: Element = next(_ for _ in children if type(_) is not Resistor)
+    resistor: Element = next(_ for _ in children if type(_) is Resistor)
+    key: str = "C" if type(capacitive) is Capacitor else "Y"
+
+    return resistor.get_lower_limit("R") < 0.0 and capacitive.get_lower_limit(key) < 0.0
+
+
+def _match_processes(
+    blocks: List[_RelaxationBlock],
+    processes: List[DRTProcess],
+) -> List[Tuple[_RelaxationBlock, DRTProcess]]:
+    # Both the blocks and the processes are ordered. Negative processes can only be
+    # matched to blocks that allow negative values. The order is preserved and as many
+    # processes as possible are matched (longest common subsequence-like alignment).
+    n: int = len(blocks)
+    m: int = len(processes)
+    allowed: List[List[bool]] = [
+        [processes[i].resistance > 0.0 or _allows_negative(blocks[j]) for j in range(n)]
+        for i in range(m)
+    ]
+    best: List[List[int]] = [[0] * (n + 1) for _ in range(m + 1)]
+    for i in range(m - 1, -1, -1):
+        for j in range(n - 1, -1, -1):
+            best[i][j] = max(best[i + 1][j], best[i][j + 1])
+            if allowed[i][j]:
+                best[i][j] = max(best[i][j], 1 + best[i + 1][j + 1])
+
+    pairs: List[Tuple[_RelaxationBlock, DRTProcess]] = []
+    i = j = 0
+    while i < m and j < n:
+        if allowed[i][j] and best[i][j] == 1 + best[i + 1][j + 1]:
+            pairs.append((blocks[j], processes[i]))
+            i += 1
+            j += 1
+        elif best[i][j] == best[i][j + 1]:
+            j += 1
+        else:
+            i += 1
+
+    return pairs
+
+
 def _initialize_relaxation_block(
     block: _RelaxationBlock,
     process: DRTProcess,
@@ -418,7 +453,7 @@ def _initialize_relaxation_block(
     n: Optional[float] = float(peak.n) if isinstance(peak, DRTPeakZARC) else None
 
     if isinstance(block, HavriliakNegamiAlternative):
-        updater.set(block, "R", R, allow_negative=negative)
+        updater.set(block, "R", R)
         if isinstance(peak, DRTPeakHavriliakNegami):
             # Same definition of the impedance: R / (1 + (j*omega*tau)^a)^b.
             updater.set(block, "tau", float(peak.tau))
@@ -433,7 +468,7 @@ def _initialize_relaxation_block(
         return
 
     if isinstance(block, ZARC):
-        updater.set(block, "R", R, allow_negative=negative)
+        updater.set(block, "R", R)
         updater.set(block, "tau", tau)
         if n is not None:
             updater.set(block, "n", n)
@@ -451,7 +486,7 @@ def _initialize_relaxation_block(
 
     capacitive: Element = next(_ for _ in children if _ is not resistor)
 
-    updater.set(resistor, "R", R, allow_negative=negative)
+    updater.set(resistor, "R", R)
     # Use the actual value (e.g., if the resistance is fixed or was restricted by its
     # limits) so that the time constant of the block is still correct.
     R = resistor.get_value("R")
@@ -459,17 +494,12 @@ def _initialize_relaxation_block(
         return
 
     if type(capacitive) is Capacitor:
-        updater.set(capacitive, "C", tau / R, allow_negative=negative)
+        updater.set(capacitive, "C", tau / R)
     else:
         if n is not None:
             updater.set(capacitive, "n", n)
         # Use the actual value of n for the same reason as R.
-        updater.set(
-            capacitive,
-            "Y",
-            tau ** capacitive.get_value("n") / R,
-            allow_negative=negative,
-        )
+        updater.set(capacitive, "Y", tau ** capacitive.get_value("n") / R)
 
 
 def estimate_initial_values(
@@ -496,8 +526,8 @@ def estimate_initial_values(
       They are matched to the negative peaks with the largest areas.
       Negative peaks are only available if the stored peak analysis includes them or, if there is no stored peak analysis, if the circuit has inductive blocks (in which case they are analyzed).
     - The remaining negative peaks are matched to the relaxation blocks, together with the positive peaks and sorted by increasing time constant, and result in negative values (e.g., a negative R and a negative C for an (RC)).
-      The lower limits of such parameters are removed (unless they are fixed).
-      Only adjacent peaks with the same sign are merged.
+      Only blocks whose limits allow negative values (a negative lower limit for R and for C or Y) are matched to negative peaks.
+      Negative peaks are ignored if there are no such blocks, and only peaks with the same sign are merged.
     - the first series resistance, which is initialized based on the difference between the experimental impedance and the impedance that corresponds to the DRT (minus the resistances of the inductive blocks).
     - the first series inductance, which is initialized based on the imaginary part of the impedance at the highest frequency (if positive).
 
@@ -597,17 +627,40 @@ def estimate_initial_values(
 
     processes: List[DRTProcess] = all_processes
     if blocks:
-        if len(processes) > len(blocks):
+        # Negative peaks can only be matched to the blocks whose limits allow negative
+        # values. They are merged if there are more negative peaks than such blocks and
+        # ignored if there are no such blocks.
+        negative: List[DRTProcess] = [_ for _ in processes if _.resistance < 0.0]
+        positive: List[DRTProcess] = [_ for _ in processes if _.resistance > 0.0]
+        capable: int = sum(1 for _ in blocks if _allows_negative(_))
+        if negative and capable < 1:
             updater.messages.append(
-                f"The DRT has {len(processes)} peaks but the circuit has {len(blocks)} relaxation blocks: the closest peaks with the same sign were merged."
+                f"The DRT has {len(negative)} negative peaks, which were ignored because none of the relaxation blocks have limits that allow negative values."
             )
-            processes = _merge_processes(processes, len(blocks))
-        elif len(processes) < len(blocks):
+            negative = []
+        elif len(negative) > capable:
             updater.messages.append(
-                f"The DRT has {len(processes)} peaks but the circuit has {len(blocks)} relaxation blocks: the last {len(blocks) - len(processes)} blocks were not changed."
+                f"The DRT has {len(negative)} negative peaks but only {capable} relaxation blocks have limits that allow negative values: the closest negative peaks were merged."
+            )
+            negative = _merge_processes(negative, capable)
+
+        if len(positive) + len(negative) > len(blocks):
+            updater.messages.append(
+                f"The DRT has {len(positive) + len(negative)} peaks but the circuit has {len(blocks)} relaxation blocks: the closest peaks with the same sign were merged."
+            )
+            positive = _merge_processes(positive, max(len(blocks) - len(negative), 1))
+
+        processes = sorted(positive + negative, key=lambda _: _.time_constant)
+        pairs: List[Tuple[_RelaxationBlock, DRTProcess]] = _match_processes(
+            blocks,
+            processes,
+        )
+        if len(pairs) < len(blocks):
+            updater.messages.append(
+                f"The DRT has {len(pairs)} peaks that could be matched to the {len(blocks)} relaxation blocks: the other blocks were not changed."
             )
 
-        for block, process in zip(blocks, processes):
+        for block, process in pairs:
             _initialize_relaxation_block(block, process, updater)
     elif not inductive_blocks:
         updater.messages.append("No relaxation blocks (e.g., (RC), (RQ), or Zarc) were found.")

@@ -1315,6 +1315,7 @@ class TestInitialValues(TestCase):
                 allow_negative=True,
             ),
         )
+        # The default limits do not allow negative values
         circuit, messages = deareis.estimate_initial_values(
             pyimpspec.parse_cdc("RZarc(RC)"),
             stored,
@@ -1322,12 +1323,30 @@ class TestInitialValues(TestCase):
         )
         R0, Z1, RC_R, RC_C = self.values(circuit)
         self.assertTrue(isclose(Z1["R"], 100.0, rtol=0.1), Z1)
+        self.assertEqual(RC_R["R"], 1000.0)
+        self.assertTrue(any("limits that allow negative" in _ for _ in messages), messages)
+
+        # Blocks with limits that allow negative values are used for negative peaks
+        cdc: pyimpspec.Circuit = pyimpspec.parse_cdc("RZarc(RC)")
+        resistor, capacitor = cdc.get_elements()[2:]
+        resistor.set_lower_limits(R=-1e3)
+        capacitor.set_lower_limits(C=-1e3)
+        circuit, messages = deareis.estimate_initial_values(cdc, stored, data)
+        R0, Z1, RC_R, RC_C = self.values(circuit)
+        self.assertTrue(isclose(Z1["R"], 100.0, rtol=0.1), Z1)
         self.assertTrue(isclose(RC_R["R"], -30.0, rtol=0.1), RC_R)
         self.assertTrue(isclose(RC_C["C"], 1e-3 / -30.0, rtol=0.2), RC_C)
-        self.assertLess(circuit.get_elements()[2].get_lower_limit("R"), -30.0)
-        self.assertTrue(any("lower limit" in _ for _ in messages), messages)
         # The time constant of the block is positive
         self.assertGreater(RC_R["R"] * RC_C["C"], 0.0)
+
+        # The negative peak is matched to the block that allows negative values even
+        # if it is not the last one
+        cdc = pyimpspec.parse_cdc("R(RC)Zarc")
+        cdc.get_elements()[3].set_lower_limits(R=-1e3)
+        circuit, messages = deareis.estimate_initial_values(cdc, stored, data)
+        R0, RC_R, RC_C, Z = self.values(circuit)
+        self.assertTrue(isclose(Z["R"], -30.0, rtol=0.1), Z)
+        self.assertTrue(isclose(RC_R["R"], 100.0, rtol=0.1), RC_R)
 
     def test_havriliak_negami(self):
         drt: deareis.DRTResult = self.with_peaks(
