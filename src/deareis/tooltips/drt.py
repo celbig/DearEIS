@@ -157,6 +157,11 @@ Use normal distributions instead of skew normal distributions.
 
 This is only used when the peak shape is skew normal.
     """.strip(),
+        "allow_negative": """
+Also detect and deconvolute negative peaks (e.g., those caused by inductive processes).
+
+Negative peaks have negative heights and areas (R_peak). Otherwise, negative values of the distribution are ignored.
+    """.strip(),
         "global_optimization": """
 Perform a global search before refining the fit. This is slower but more robust when peaks overlap.
     """.strip(),

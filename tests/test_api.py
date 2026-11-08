@@ -1354,6 +1354,36 @@ class TestDRTPeakAnalysis(TestCase):
                 msg=shape,
             )
 
+    def test_negative_peaks(self):
+        shape: deareis.DRTPeakShape
+        for shape in deareis.DRTPeakShape:
+            default: deareis.DRTPeakAnalysis = deareis.analyze_drt_peaks(
+                self.bht,
+                self.settings(shape=shape),
+            )
+            analysis: deareis.DRTPeakAnalysis = deareis.analyze_drt_peaks(
+                self.bht,
+                self.settings(shape=shape, allow_negative=True),
+            )
+            self.assertTrue(analysis.settings.allow_negative)
+            self.assertFalse(default.settings.allow_negative)
+            self.assertTrue(
+                all(_ > 0.0 for _ in default.to_dataframe()["R_peak (ohm)"]),
+                msg=shape,
+            )
+            self.assertGreater(analysis.get_num_peaks(), default.get_num_peaks(), msg=shape)
+            self.assertTrue(
+                any(_ < 0.0 for _ in analysis.to_dataframe()["R_peak (ohm)"]),
+                msg=shape,
+            )
+            restored = deareis.DRTPeakSettings.from_dict(analysis.settings.to_dict())
+            self.assertTrue(restored.allow_negative)
+
+        # Settings stored by older versions lack the key
+        old: dict = self.settings().to_dict()
+        del old["allow_negative"]
+        self.assertFalse(deareis.DRTPeakSettings.from_dict(old).allow_negative)
+
     def test_bht_real_and_imaginary(self):
         analysis: deareis.DRTPeakAnalysis = deareis.analyze_drt_peaks(
             self.bht,

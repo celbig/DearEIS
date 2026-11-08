@@ -1515,6 +1515,7 @@ DEFAULT_DRT_PEAK_SETTINGS: DRTPeakSettings = DRTPeakSettings(
     peak_positions=[],
     disallow_skew=False,
     global_optimization=False,
+    allow_negative=False,
 )
 
 
@@ -1594,6 +1595,16 @@ class PeakAnalysisSection:
                 dpg.add_checkbox(
                     default_value=default_settings.disallow_skew,
                     tag=self.disallow_skew_checkbox,
+                )
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Negative peaks".rjust(label_pad))
+                attach_tooltip(tooltips.drt.allow_negative)
+
+                self.allow_negative_checkbox: Tag = dpg.generate_uuid()
+                dpg.add_checkbox(
+                    default_value=default_settings.allow_negative,
+                    tag=self.allow_negative_checkbox,
                 )
 
             with dpg.group(horizontal=True):
@@ -1771,6 +1782,7 @@ class PeakAnalysisSection:
             peak_positions=self.get_peak_positions(),
             disallow_skew=dpg.get_value(self.disallow_skew_checkbox),
             global_optimization=dpg.get_value(self.global_optimization_checkbox),
+            allow_negative=dpg.get_value(self.allow_negative_checkbox),
         )
 
     def set_settings(self, settings: DRTPeakSettings):
@@ -1782,6 +1794,7 @@ class PeakAnalysisSection:
         )
         dpg.set_value(self.disallow_skew_checkbox, settings.disallow_skew)
         dpg.set_value(self.global_optimization_checkbox, settings.global_optimization)
+        dpg.set_value(self.allow_negative_checkbox, settings.allow_negative)
         self.update_settings()
 
     def update_settings(self):
