@@ -81,6 +81,7 @@ from deareis.api.drt import (
     DRTSettings,
     # - enums
     CrossValidationMethod,
+    DRTLowFrequencyPrior,
     DRTMethod,
     DRTMode,
     DRTPeakShape,

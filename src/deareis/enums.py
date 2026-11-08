@@ -1105,12 +1105,14 @@ class DRTMethod(IntEnum):
     - TR_RBF
     - BHT
     - MRQ_FIT
+    - BAYES_DRT2
     """
 
     TR_NNLS = 1
     TR_RBF = 2
     BHT = 3
     MRQ_FIT = 4
+    BAYES_DRT2 = 5
 
 
 drt_method_to_label: Dict[DRTMethod, str] = {
@@ -1118,6 +1120,7 @@ drt_method_to_label: Dict[DRTMethod, str] = {
     DRTMethod.TR_NNLS: "TR-NNLS",
     DRTMethod.TR_RBF: "TR-RBF",
     DRTMethod.MRQ_FIT: "m(RQ)fit",
+    DRTMethod.BAYES_DRT2: "Bayesian",
 }
 label_to_drt_method: Dict[str, DRTMethod] = {
     v: k for k, v in drt_method_to_label.items()
@@ -1127,6 +1130,7 @@ drt_method_to_value: Dict[DRTMethod, str] = {
     DRTMethod.MRQ_FIT: "mrq-fit",
     DRTMethod.TR_NNLS: "tr-nnls",
     DRTMethod.TR_RBF: "tr-rbf",
+    DRTMethod.BAYES_DRT2: "bayes-drt2",
 }
 assert set(drt_method_to_label.keys()) == set(
     label_to_drt_method.values()
@@ -1283,6 +1287,37 @@ assert set(rbf_shape_to_label.keys()) == set(
 assert set(rbf_shape_to_label.keys()) == set(
     rbf_shape_to_value.keys()
 ), "Missing RBF shape string values detected!"
+
+
+class DRTLowFrequencyPrior(IntEnum):
+    """
+    The prior on the DRT below the cut-off frequency in the Bayesian method:
+
+    - FREE
+    - NEGATIVE
+    """
+
+    FREE = 1
+    NEGATIVE = 2
+
+
+drt_low_frequency_prior_to_label: Dict[DRTLowFrequencyPrior, str] = {
+    DRTLowFrequencyPrior.FREE: "Free",
+    DRTLowFrequencyPrior.NEGATIVE: "Non-positive",
+}
+label_to_drt_low_frequency_prior: Dict[str, DRTLowFrequencyPrior] = {
+    v: k for k, v in drt_low_frequency_prior_to_label.items()
+}
+drt_low_frequency_prior_to_value: Dict[DRTLowFrequencyPrior, str] = {
+    DRTLowFrequencyPrior.FREE: "free",
+    DRTLowFrequencyPrior.NEGATIVE: "negative",
+}
+assert set(drt_low_frequency_prior_to_label.keys()) == set(
+    label_to_drt_low_frequency_prior.values()
+), "Duplicate DRT low-frequency prior string labels detected!"
+assert set(drt_low_frequency_prior_to_label.keys()) == set(
+    drt_low_frequency_prior_to_value.keys()
+), "Missing DRT low-frequency prior string values detected!"
 
 
 derivative_order_to_label: Dict[int, str] = {

@@ -10,6 +10,7 @@ The distribution of relaxation times (DRT) can be calculated using multiple diff
 
 - `Bayesian Hilbert transform (BHT) <https://doi.org/10.1016/j.electacta.2020.136864>`_
 - `Tikhonov regularization and non-negative least squares fitting (TR-NNLS) <https://doi.org/10.1039/D0CP02094J>`_
+- `Hierarchical Bayesian inversion <https://doi.org/10.1016/j.electacta.2020.137493>`_ (optional, requires the bayes_drt2 package)
 - `Tikhonov regularization and radial basis function (or piecewise linear) discretization (TR-RBF) <https://doi.org/10.1016/j.electacta.2015.09.097>`_
 - `multi-(RQ) fit (m(RQ)fit) <https://doi.org/10.1016/j.electacta.2014.12.059>`_
 

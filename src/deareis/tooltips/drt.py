@@ -28,11 +28,15 @@ boukamp2015: str = "DOI:10.1016/j.electacta.2014.12.059"
 boukamp2017: str = "DOI:10.1016/j.ssi.2016.10.009"
 cultrera2020: str = "DOI:10.1088/2633-1357/abad0d"
 maradesa2023: str = "DOI:10.1149/1945-7111/acbca4"
+huang2020: str = "DOI:10.1016/j.electacta.2020.137493"
 
 drt = SimpleNamespace(
     **{
         "method": f"""
 The method to use when calculating the distribution of relaxation times.
+
+Bayesian: hierarchical Bayesian inversion (requires the optional bayes_drt2 package, cmdstanpy, and CmdStan).
+- Huang et al. (2020, {huang2020})
 
 BHT: Bayesian Hilbert transform method.
 - Liu et al. (2020, {liu2020})
@@ -57,7 +61,7 @@ The data to use when performing the calculations:
 - Real
 - Imaginary
 
-This is only used when the method setting is set to TR-NNLS or TR-RBF.
+This is only used when the method setting is set to TR-NNLS, TR-RBF, or Bayesian.
     """.strip(),
         "lambda_value": f"""
 The regularization parameter to use as part of the Tikhonov regularization. If the checkbox next to the input field is ticked, then an attempt will be made to automatically find a suitable value. However, further tweaking of the value manually may be necessary. More than one approach for suggesting a suitable regularization parameter may be available.
@@ -75,6 +79,29 @@ This is only used when the method setting is set to BHT or TR-RBF.
     """.strip(),
         "credible_intervals": """
 Whether or not the Bayesican credible intervals are calculated when using the TR-RBF method. The number of samples to use can also be defined. More accurate results can be obtained with a greater number of samples albeit at the expense of requiring more time.
+    """.strip(),
+        "bayes_cutoff_frequency": """
+The frequency (in hertz) below which the DRT is no longer constrained to be non-negative.
+A value of zero means that the DRT is non-negative at all frequencies.
+
+This is only used when the method setting is set to Bayesian.
+    """.strip(),
+        "bayes_low_frequency_prior": """
+The prior on the DRT below the cut-off frequency:
+- Free: the gamma values may be positive or negative
+- Non-positive: the gamma values must be zero or negative
+
+This is only used when the method setting is set to Bayesian and the cut-off frequency is greater than zero.
+    """.strip(),
+        "bayes_warmup": """
+The number of warmup iterations of each HMC chain.
+
+This is only used when the method setting is set to Bayesian and credible intervals are enabled.
+    """.strip(),
+        "bayes_samples": """
+The number of samples drawn by each HMC chain (two chains are used).
+
+This is only used when the method setting is set to Bayesian and credible intervals are enabled.
     """.strip(),
         "credible_intervals_timeout": """
 How many seconds to wait for the calculation of credible intervals to finish before timing out.

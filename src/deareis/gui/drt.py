@@ -65,6 +65,7 @@ from deareis.data.drt import (
 from deareis.data.fitting import FitResult
 from deareis.enums import (
     CrossValidationMethod,
+    DRTLowFrequencyPrior,
     DRTMethod,
     DRTMode,
     DRTOutput,
@@ -72,11 +73,13 @@ from deareis.enums import (
     TRNNLSLambdaMethod,
     cross_validation_method_to_label,
     derivative_order_to_label,
+    drt_low_frequency_prior_to_label,
     drt_method_to_label,
     drt_mode_to_label,
     drt_peak_shape_to_label,
     label_to_cross_validation_method,
     label_to_derivative_order,
+    label_to_drt_low_frequency_prior,
     label_to_drt_method,
     label_to_drt_mode,
     label_to_drt_output,
@@ -565,6 +568,65 @@ class SettingsMenu:
                 )
 
             with dpg.group(horizontal=True):
+                dpg.add_text("Cut-off frequency".rjust(label_pad))
+                attach_tooltip(tooltips.drt.bayes_cutoff_frequency)
+
+                self.bayes_cutoff_frequency_input: Tag = dpg.generate_uuid()
+                dpg.add_input_float(
+                    default_value=default_settings.bayes_cutoff_frequency,
+                    width=-1,
+                    min_value=0.0,
+                    min_clamped=True,
+                    step=0.0,
+                    format="%.3g",
+                    on_enter=True,
+                    tag=self.bayes_cutoff_frequency_input,
+                )
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Low-frequency prior".rjust(label_pad))
+                attach_tooltip(tooltips.drt.bayes_low_frequency_prior)
+
+                self.bayes_low_frequency_prior_combo: Combo = Combo(
+                    default_value=drt_low_frequency_prior_to_label[
+                        default_settings.bayes_low_frequency_prior
+                    ],
+                    items=list(label_to_drt_low_frequency_prior.keys()),
+                    user_data=label_to_drt_low_frequency_prior,
+                    width=-1,
+                )
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Warmup iterations".rjust(label_pad))
+                attach_tooltip(tooltips.drt.bayes_warmup)
+
+                self.bayes_warmup_input: Tag = dpg.generate_uuid()
+                dpg.add_input_int(
+                    default_value=default_settings.bayes_warmup,
+                    width=-1,
+                    min_value=1,
+                    min_clamped=True,
+                    step=0,
+                    on_enter=True,
+                    tag=self.bayes_warmup_input,
+                )
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Samples per chain".rjust(label_pad))
+                attach_tooltip(tooltips.drt.bayes_samples)
+
+                self.bayes_samples_input: Tag = dpg.generate_uuid()
+                dpg.add_input_int(
+                    default_value=default_settings.bayes_samples,
+                    width=-1,
+                    min_value=1,
+                    min_clamped=True,
+                    step=0,
+                    on_enter=True,
+                    tag=self.bayes_samples_input,
+                )
+
+            with dpg.group(horizontal=True):
                 dpg.add_text("Circuit".rjust(label_pad))
                 attach_tooltip(tooltips.drt.circuit)
 
@@ -703,6 +765,10 @@ class SettingsMenu:
             num_per_decade=dpg.get_value(self.num_per_decade_input),
             cross_validation_method=cross_validation_method,
             tr_nnls_lambda_method=tr_nnls_lambda_method,
+            bayes_cutoff_frequency=dpg.get_value(self.bayes_cutoff_frequency_input),
+            bayes_low_frequency_prior=self.bayes_low_frequency_prior_combo.get_value(),
+            bayes_warmup=dpg.get_value(self.bayes_warmup_input),
+            bayes_samples=dpg.get_value(self.bayes_samples_input),
         )
 
     def set_settings(self, settings: DRTSettings):
@@ -736,6 +802,10 @@ class SettingsMenu:
         dpg.set_value(self.num_samples_input, settings.num_samples)
         dpg.set_value(self.num_attempts_input, settings.num_attempts)
         dpg.set_value(self.maximum_symmetry_input, settings.maximum_symmetry)
+        dpg.set_value(self.bayes_cutoff_frequency_input, settings.bayes_cutoff_frequency)
+        self.bayes_low_frequency_prior_combo.set_value(settings.bayes_low_frequency_prior)
+        dpg.set_value(self.bayes_warmup_input, settings.bayes_warmup)
+        dpg.set_value(self.bayes_samples_input, settings.bayes_samples)
 
         labels: List[str] = list(dpg.get_item_user_data(self.circuit_combo).keys())
         default_value: str = ""
@@ -800,7 +870,7 @@ class SettingsMenu:
             else:
                 self.lambda_combo.set_value(settings.tr_nnls_lambda_method)
 
-        elif settings.method is DRTMethod.TR_RBF:
+        elif settings.method in (DRTMethod.TR_RBF, DRTMethod.BAYES_DRT2):
             self.mode_combo.set_items(list(label_to_drt_mode.keys()))
             self.mode_combo.set_value(settings.mode)
             self.show_setting(self.mode_combo.tag)
@@ -810,12 +880,13 @@ class SettingsMenu:
                 for k, v in label_to_cross_validation_method.items()
                 if v is not CrossValidationMethod.NONE
             }
-            self.lambda_combo.set_items(list(tr_rbf_lambda_dict.keys()))
-            self.lambda_combo.set_user_data(tr_rbf_lambda_dict)
-            if settings.cross_validation_method is CrossValidationMethod.NONE:
-                self.lambda_combo.set_value(CrossValidationMethod.GCV)
-            else:
-                self.lambda_combo.set_value(settings.cross_validation_method)
+            if settings.method is DRTMethod.TR_RBF:
+                self.lambda_combo.set_items(list(tr_rbf_lambda_dict.keys()))
+                self.lambda_combo.set_user_data(tr_rbf_lambda_dict)
+                if settings.cross_validation_method is CrossValidationMethod.NONE:
+                    self.lambda_combo.set_value(CrossValidationMethod.GCV)
+                else:
+                    self.lambda_combo.set_value(settings.cross_validation_method)
 
         elif settings.method in (DRTMethod.BHT, DRTMethod.MRQ_FIT):
             self.hide_setting(self.mode_combo.tag)
@@ -845,17 +916,34 @@ class SettingsMenu:
             self.hide_setting(self.rbf_shape_combo.tag)
             self.hide_setting(self.shape_coeff_input)
 
-        if settings.method is DRTMethod.TR_RBF:
+        if settings.method in (DRTMethod.TR_RBF, DRTMethod.BAYES_DRT2):
             self.show_setting(self.inductance_checkbox)
         else:
             self.hide_setting(self.inductance_checkbox)
 
-        if settings.method is DRTMethod.TR_RBF:
+        if settings.method in (DRTMethod.TR_RBF, DRTMethod.BAYES_DRT2):
             self.show_setting(self.credible_intervals_checkbox)
-            self.show_setting(self.timeout_input)
         else:
             self.hide_setting(self.credible_intervals_checkbox)
+
+        if settings.method is DRTMethod.TR_RBF:
+            self.show_setting(self.timeout_input)
+        else:
             self.hide_setting(self.timeout_input)
+
+        if settings.method is DRTMethod.BAYES_DRT2:
+            self.show_setting(self.bayes_cutoff_frequency_input)
+            self.show_setting(self.bayes_low_frequency_prior_combo.tag)
+            self.show_setting(self.bayes_warmup_input)
+            self.show_setting(self.bayes_samples_input)
+            if settings.credible_intervals is False:
+                dpg.disable_item(self.bayes_warmup_input)
+                dpg.disable_item(self.bayes_samples_input)
+        else:
+            self.hide_setting(self.bayes_cutoff_frequency_input)
+            self.hide_setting(self.bayes_low_frequency_prior_combo.tag)
+            self.hide_setting(self.bayes_warmup_input)
+            self.hide_setting(self.bayes_samples_input)
 
         if settings.method is DRTMethod.BHT:
             self.show_setting(self.num_samples_input)
@@ -894,6 +982,9 @@ class SettingsMenu:
             self.num_samples_input,
             self.num_attempts_input,
             self.maximum_symmetry_input,
+            self.bayes_cutoff_frequency_input,
+            self.bayes_warmup_input,
+            self.bayes_samples_input,
         ]
         tag: int
         for tag in inputs:
@@ -1148,6 +1239,7 @@ class SettingsTable:
                                 [
                                     DRTMethod.TR_NNLS,
                                     DRTMethod.TR_RBF,
+                                    DRTMethod.BAYES_DRT2,
                                 ],
                             )
                         ),
@@ -1214,11 +1306,27 @@ class SettingsTable:
                     ),
                     (
                         "Include inductance",
-                        drt_method_to_label[DRTMethod.TR_RBF],
+                        ",".join(
+                            map(
+                                lambda _: drt_method_to_label[_],
+                                [
+                                    DRTMethod.TR_RBF,
+                                    DRTMethod.BAYES_DRT2,
+                                ],
+                            )
+                        ),
                     ),
                     (
                         "Credible intervals",
-                        drt_method_to_label[DRTMethod.TR_RBF],
+                        ",".join(
+                            map(
+                                lambda _: drt_method_to_label[_],
+                                [
+                                    DRTMethod.TR_RBF,
+                                    DRTMethod.BAYES_DRT2,
+                                ],
+                            )
+                        ),
                     ),
                     (
                         "Number of samples",
@@ -1259,6 +1367,22 @@ class SettingsTable:
                     (
                         "Num. per decade",
                         drt_method_to_label[DRTMethod.MRQ_FIT],
+                    ),
+                    (
+                        "Cut-off frequency",
+                        drt_method_to_label[DRTMethod.BAYES_DRT2],
+                    ),
+                    (
+                        "Low-freq. prior",
+                        drt_method_to_label[DRTMethod.BAYES_DRT2],
+                    ),
+                    (
+                        "Warmup iterations",
+                        drt_method_to_label[DRTMethod.BAYES_DRT2],
+                    ),
+                    (
+                        "Samples per chain",
+                        drt_method_to_label[DRTMethod.BAYES_DRT2],
                     ),
                 ]:
                     with dpg.table_row(filter_key=filter_key):
@@ -1341,6 +1465,10 @@ class SettingsTable:
             str(drt.settings.fit.circuit) if drt.settings.fit is not None else "",
             f"{drt.settings.gaussian_width:.3g}",
             str(drt.settings.num_per_decade),
+            f"{drt.settings.bayes_cutoff_frequency:.3g}",
+            drt_low_frequency_prior_to_label[drt.settings.bayes_low_frequency_prior],
+            str(drt.settings.bayes_warmup),
+            str(drt.settings.bayes_samples),
         ]
         visible_items: List[bool] = []
 
@@ -2711,7 +2839,7 @@ class DRTTab:
         )
 
         if (
-            drt.settings.method == DRTMethod.TR_RBF
+            drt.settings.method in (DRTMethod.TR_RBF, DRTMethod.BAYES_DRT2)
             and drt.settings.credible_intervals is True
         ):
             mean: ndarray
@@ -2728,7 +2856,7 @@ class DRTTab:
                 tau=tau,
                 lower=lower,
                 upper=upper,
-                label="3-sigma CI",
+                label="3-sigma CI" if drt.settings.method == DRTMethod.TR_RBF else "95% CI",
                 theme=themes.drt.credible_intervals,
             )
         elif drt.settings.method == DRTMethod.BHT:

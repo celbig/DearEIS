@@ -64,6 +64,7 @@ from deareis.enums import (
     CNLSMethod,
     Context,
     CrossValidationMethod,
+    DRTLowFrequencyPrior,
     DRTMethod,
     DRTMode,
     DRTPeakShape,
@@ -1380,6 +1381,65 @@ Score & Real (\%) & Imag. (\%) \\"""
         perform_action(action=Action.PREVIOUS_SECONDARY_RESULT)
 
     @next_step(cycle_results)
+    def validate_delete_bayes():
+        data = project_tab.get_active_data_set()
+        assert len(project.get_drts(data)) == 4
+        assert STATE.is_project_dirty(project) is True
+        signals.emit(Signal.SAVE_PROJECT)
+
+    @next_step(validate_delete_bayes)
+    def delete_bayes():
+        print("  - Delete Bayesian result")
+        perform_action(action=Action.DELETE_RESULT)
+
+    @next_step(delete_bayes)
+    def validate_perform_bayes():
+        assert STATE.is_project_dirty(project) is True
+        data = project_tab.get_active_data_set()
+        assert len(project.get_drts(data)) == 5
+        drt = project_tab.get_active_drt()
+        assert drt.settings.method == DRTMethod.BAYES_DRT2
+        assert drt.settings.credible_intervals is False
+        assert isclose(drt.settings.bayes_cutoff_frequency, 0.01, abs_tol=1e-9)
+        assert drt.settings.bayes_low_frequency_prior == DRTLowFrequencyPrior.FREE
+        assert len(drt.get_drt_data()[0]) > 0
+        signals.emit(Signal.SAVE_PROJECT)
+
+    @next_step(validate_perform_bayes)
+    def perform_bayes():
+        print("  - Perform Bayesian DRT analysis")
+        assert STATE.is_project_dirty(project) is False
+        signals.emit(
+            Signal.APPLY_DRT_SETTINGS,
+            settings=DRTSettings(
+                method=DRTMethod.BAYES_DRT2,
+                mode=DRTMode.COMPLEX,
+                lambda_value=-1.0,
+                rbf_type=RBFType.GAUSSIAN,
+                derivative_order=1,
+                rbf_shape=RBFShape.FWHM,
+                shape_coeff=0.5,
+                inductance=False,
+                credible_intervals=False,
+                timeout=1,
+                num_samples=2000,
+                num_attempts=1,
+                maximum_symmetry=0.5,
+                fit=None,
+                gaussian_width=0.15,
+                num_per_decade=20,
+                cross_validation_method=CrossValidationMethod.NONE,
+                tr_nnls_lambda_method=TRNNLSLambdaMethod.NONE,
+                bayes_cutoff_frequency=0.01,
+                bayes_low_frequency_prior=DRTLowFrequencyPrior.FREE,
+                bayes_warmup=100,
+                bayes_samples=100,
+            ),
+        )
+        sleep(0.5)
+        perform_action(action=Action.PERFORM_ACTION)
+
+    @next_step(perform_bayes)
     def validate_perform_tr_rbf():
         assert STATE.is_project_dirty(project) is True
         data = project_tab.get_active_data_set()
