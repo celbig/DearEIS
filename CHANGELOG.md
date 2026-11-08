@@ -27,7 +27,7 @@
   - Added the `Peaks` outputs (CSV, JSON, LaTeX, and Markdown) for copying the table of peaks to the clipboard.
   - Added the `analyze_drt_peaks` function and the `DRTPeakSettings`, `DRTPeakAnalysis`, and `DRTPeakShape` classes to the API.
   - The `DRTResult` class has a new `peak_analysis` attribute. Projects created with older versions of DearEIS can still be loaded.
-  - The `Init. values from DRT` option in the `Fitting` tab initializes `(RL)` blocks (a resistor in parallel with an inductor) from negative peaks and takes their resistances into account when estimating the first series resistance.
+  - The `Init. values from DRT` option in the `Fitting` tab initializes `(RL)` blocks (a resistor in parallel with an inductor) from negative peaks and takes their resistances into account when estimating the first series resistance. Remaining negative peaks are matched to relaxation blocks (e.g., `(RC)`), which results in negative values (the lower limits of those parameters are removed).
   - Added the `Negative peaks` checkbox (`allow_negative` in `DRTPeakSettings`), which also detects and deconvolutes negative peaks (e.g., inductive processes). Negative peaks have negative heights and areas.
   - Each peak has its own color (a default palette is used), which can be changed via the table of peaks and is saved in projects.
   - The areas of the peaks, the sum of the peaks, and the difference between the DRT and the sum of the peaks can be shown/hidden. The area of each peak can also be shown/hidden individually.

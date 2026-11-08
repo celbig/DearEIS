@@ -1285,14 +1285,49 @@ class TestInitialValues(TestCase):
         # The resistance of the (RL) block is part of the high-frequency resistance
         self.assertTrue(isclose(R0["R"], 20.0, atol=3.0), R0)
 
-        # Without an inductive block, the negative peak is ignored
+        # Peaks with different signs are not merged
         circuit, messages = deareis.estimate_initial_values(
             pyimpspec.parse_cdc("RZarc"),
             drt,
             data,
         )
         self.assertTrue(isclose(self.values(circuit)[1]["R"], 100.0, rtol=0.1))
-        self.assertFalse(any("negative" in _ for _ in messages))
+
+        # Without a stored analysis and without inductive blocks, negative peaks are not analyzed
+        circuit, messages = deareis.estimate_initial_values(
+            pyimpspec.parse_cdc("RZarc(RC)"),
+            drt,
+            data,
+        )
+        self.assertGreater(self.values(circuit)[2]["R"], 0.0)
+
+        # Negative peaks of a stored peak analysis are matched to relaxation blocks and
+        # result in negative values
+        stored: deareis.DRTResult = copy(drt)
+        stored.peak_analysis = deareis.analyze_drt_peaks(
+            drt=stored,
+            settings=deareis.DRTPeakSettings(
+                shape=deareis.DRTPeakShape.ZARC,
+                num_peaks=0,
+                peak_positions=[],
+                disallow_skew=False,
+                global_optimization=False,
+                allow_negative=True,
+            ),
+        )
+        circuit, messages = deareis.estimate_initial_values(
+            pyimpspec.parse_cdc("RZarc(RC)"),
+            stored,
+            data,
+        )
+        R0, Z1, RC_R, RC_C = self.values(circuit)
+        self.assertTrue(isclose(Z1["R"], 100.0, rtol=0.1), Z1)
+        self.assertTrue(isclose(RC_R["R"], -30.0, rtol=0.1), RC_R)
+        self.assertTrue(isclose(RC_C["C"], 1e-3 / -30.0, rtol=0.2), RC_C)
+        self.assertLess(circuit.get_elements()[2].get_lower_limit("R"), -30.0)
+        self.assertTrue(any("lower limit" in _ for _ in messages), messages)
+        # The time constant of the block is positive
+        self.assertGreater(RC_R["R"] * RC_C["C"], 0.0)
 
     def test_havriliak_negami(self):
         drt: deareis.DRTResult = self.with_peaks(
