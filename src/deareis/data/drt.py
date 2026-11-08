@@ -473,6 +473,10 @@ class DRTPeakSettings:
     global_optimization: bool
         If true, then a global search is performed before the local refinement.
         This is slower but more robust when peaks overlap.
+
+    allow_negative: bool
+        If true, then negative peaks (e.g., inductive processes) are also detected and deconvoluted.
+        Negative peaks have negative heights and areas.
     """
 
     shape: DRTPeakShape
@@ -480,6 +484,7 @@ class DRTPeakSettings:
     peak_positions: List[float]
     disallow_skew: bool
     global_optimization: bool
+    allow_negative: bool = False
 
     def __repr__(self) -> str:
         return f"DRTPeakSettings ({hex(id(self))})"
@@ -492,6 +497,7 @@ class DRTPeakSettings:
             "peak_positions": [float(_) for _ in self.peak_positions],
             "disallow_skew": self.disallow_skew,
             "global_optimization": self.global_optimization,
+            "allow_negative": self.allow_negative,
         }
 
     @classmethod
@@ -511,6 +517,7 @@ class DRTPeakSettings:
             peak_positions=list(dictionary["peak_positions"]),
             disallow_skew=dictionary["disallow_skew"],
             global_optimization=dictionary["global_optimization"],
+            allow_negative=dictionary.get("allow_negative", False),
         )
 
 

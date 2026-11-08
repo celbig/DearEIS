@@ -159,7 +159,7 @@ def _analyze_gammas(
     suffix: str,
 ) -> _pyimpspec.DRTPeaks:
     shape: str = _drt_peak_shape_to_value[settings.shape]
-    if not (gammas > 0.0).any():
+    if not ((gammas != 0.0) if settings.allow_negative else (gammas > 0.0)).any():
         # Nothing to fit (e.g., the imaginary part of a DRT without any positive values).
         return _pyimpspec.DRTPeaks(
             time_constants=time_constants,
@@ -167,6 +167,11 @@ def _analyze_gammas(
             suffix=suffix,
             shape=shape,
         )
+
+    kwargs: dict = {}
+    if settings.allow_negative:
+        # Requires a version of pyimpspec that supports negative peaks.
+        kwargs["allow_negative"] = True
 
     return _pyimpspec.analyze_drt_peaks(
         time_constants=time_constants,
@@ -177,6 +182,7 @@ def _analyze_gammas(
         shape=shape,
         global_optimization=settings.global_optimization,
         suffix=suffix,
+        **kwargs,
     )
 
 
