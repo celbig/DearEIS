@@ -1238,6 +1238,62 @@ class TestInitialValues(TestCase):
         self.assertTrue(isclose(Z2["R"], 300.0, rtol=0.25))
         self.assertTrue(isclose(Z2["n"], 0.9, atol=0.05))
 
+    def test_negative_peaks(self):
+        # A DRT with a positive ZARC peak and a negative peak that corresponds to an
+        # inductive (RL) block, which is R - R / (1 + j*w*tau) where tau = L / R.
+        from copy import copy
+        from pyimpspec.analysis.drt.peak_analysis import _zarc
+        from numpy import (
+            log as ln,
+            logspace,
+        )
+
+        true_circuit: pyimpspec.Circuit = pyimpspec.parse_cdc(
+            "R{R=20}Zarc{R=100,tau=1e-4,n=0.9}(R{R=30}L{L=0.03})"
+        )
+        f: ndarray = logspace(6, -2, 81)
+        data: deareis.DataSet = deareis.DataSet(
+            frequencies=f,
+            impedances=true_circuit.get_impedances(f),
+            label="Inductive",
+        )
+        drt: deareis.DRTResult = copy(self.drt)
+        u: ndarray = ln(drt.time_constants)
+        drt.real_gammas = _zarc(u, 100.0, ln(1e-4), 0.9) + _zarc(
+            u, -30.0, ln(1e-3), 0.9
+        )
+        self.assertLess(drt.real_gammas.min(), 0.0)
+
+        # Negative peaks are only analyzed when requested
+        processes = deareis.extract_drt_processes(drt, num_peaks=2)
+        self.assertTrue(all(_.resistance > 0.0 for _ in processes))
+        processes = deareis.extract_drt_processes(drt, num_peaks=2, allow_negative=True)
+        self.assertEqual([_.resistance < 0.0 for _ in processes], [False, True])
+        self.assertTrue(isclose(processes[1].resistance, -30.0, rtol=0.1))
+        self.assertTrue(isclose(processes[1].time_constant, 1e-3, rtol=0.1))
+
+        circuit, messages = deareis.estimate_initial_values(
+            pyimpspec.parse_cdc("RZarc(RL)"),
+            drt,
+            data,
+        )
+        R0, Z1, RL_R, RL_L = self.values(circuit)
+        self.assertTrue(isclose(Z1["R"], 100.0, rtol=0.1), Z1)
+        self.assertTrue(isclose(Z1["tau"], 1e-4, rtol=0.1), Z1)
+        self.assertTrue(isclose(RL_R["R"], 30.0, rtol=0.1), RL_R)
+        self.assertTrue(isclose(RL_L["L"], 0.03, rtol=0.2), RL_L)
+        # The resistance of the (RL) block is part of the high-frequency resistance
+        self.assertTrue(isclose(R0["R"], 20.0, atol=3.0), R0)
+
+        # Without an inductive block, the negative peak is ignored
+        circuit, messages = deareis.estimate_initial_values(
+            pyimpspec.parse_cdc("RZarc"),
+            drt,
+            data,
+        )
+        self.assertTrue(isclose(self.values(circuit)[1]["R"], 100.0, rtol=0.1))
+        self.assertFalse(any("negative" in _ for _ in messages))
+
     def test_havriliak_negami(self):
         drt: deareis.DRTResult = self.with_peaks(
             deareis.DRTPeakShape.HAVRILIAK_NEGAMI, 2
